@@ -106,14 +106,12 @@ export class PeerParser extends Transform {
   private buffer: Buffer;
   private lastTableDefinition?: TableDefinition;
   private lastUpdateId: number;
-  private lastTick: number;
 
   constructor(options: TransformOptions = {}) {
     options.readableObjectMode = true;
     super(options);
     this.buffer = Buffer.alloc(0);
     this.lastUpdateId = 0;
-    this.lastTick = 0;
   }
 
   /**
