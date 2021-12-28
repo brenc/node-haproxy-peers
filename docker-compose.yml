@@ -1,0 +1,63 @@
+version: "3.9"
+services:
+  proxy:
+    build:
+      args:
+        - USER
+      context: ./test-proxy
+    hostname: test-proxy
+    init: true
+    ports:
+      # Non-ssl port
+      - 8100:8100
+      - 8101:8101
+      - 8102:8102
+      - 8103:8103
+    volumes:
+      - /home/${USER}/.cache/yarn:/home/${USER}/.cache/yarn
+      - ${PWD}/../haproxy-2.5.0/haproxy:/usr/local/sbin/haproxy
+      - ${PWD}/test-proxy/etc:/usr/local/etc/haproxy
+      - ${PWD}/test-proxy/package.json:/app/package.json
+      - ${PWD}/test-proxy/yarn.lock:/app/yarn.lock
+
+  demo:
+    build:
+      args:
+        - NODE_ENV
+        - NPM_TOKEN
+        - UID
+        - USER
+      context: .
+      target: development
+    init: true
+    #ports:
+    #  - 8200:8200
+    volumes:
+      - ${PWD}/test-web/dot-npmrc:/app/.npmrc
+      # Use the host's yarn cache otherwise each time you run yarn inside a
+      # fresh container, it'll download all packages to the cache inside the
+      # container. $USER is set by the shell and exported explicitly so it'll
+      # just work here.
+      - /home/${USER}/.cache/yarn:/home/${USER}/.cache/yarn
+      - ${PWD}/dist:/app/dist
+      - ${PWD}/package.json:/app/package.json
+      - ${PWD}/yarn.lock:/app/yarn.lock
+
+  tsc_watch:
+    build:
+      args:
+        - UID
+        - USER
+      context: .
+      target: tsc_watch
+    init: true
+    volumes:
+      - ${PWD}:/app
+
+#  web:
+#    image: nginx
+#    ports:
+#      - 8300:80
+#    #init: true
+#    volumes:
+#      - ${PWD}/web:/usr/share/nginx/html:ro

@@ -62,34 +62,57 @@ export enum DataType {
   BYTES_OUT_RATE = 16,
   GPC1 = 17,
   GPC1_RATE = 18,
+  HTTP_FAIL_CNT = 20,
+  HTTP_FAIL_RATE = 21,
 }
 
-export namespace DataType {
-  export enum DecodedType {
-    SINT,
-    UINT,
-    ULONGLONG,
-  }
+export enum DecodedType {
+  SINT,
+  UINT,
+  ULONGLONG,
+  FREQUENCY_COUNTER,
+  DICTIONARY,
+}
 
-  export function getDecodedType(dataType: DataType): DecodedType {
-    switch (dataType) {
-      case DataType.SERVER_ID:
-        return DecodedType.SINT;
-      case DataType.GPT0:
-      case DataType.GPC0:
-      case DataType.CONN_CNT:
-      case DataType.CONN_CUR:
-      case DataType.SESS_CNT:
-      case DataType.HTTP_REQ_CNT:
-      case DataType.HTTP_ERR_CNT:
-      case DataType.GPC1:
-        return DecodedType.UINT;
-      case DataType.BYTES_IN_CNT:
-      case DataType.BYTES_OUT_CNT:
-        return DecodedType.ULONGLONG;
-      default:
-        throw new Error(`Unhandled DataType ${dataType}`);
-    }
+export interface FrequencyCounter {
+  currentTick: DecodedType.UINT;
+  currentCounter: DecodedType.UINT;
+  previousCounter: DecodedType.UINT;
+}
+
+export function getDecodedType(dataType: DataType): DecodedType {
+  switch (dataType) {
+    case DataType.SERVER_ID:
+      return DecodedType.SINT;
+
+    case DataType.CONN_CNT:
+    case DataType.CONN_CUR:
+    case DataType.GPC0:
+    case DataType.GPC1:
+    case DataType.GPT0:
+    case DataType.HTTP_ERR_CNT:
+    case DataType.HTTP_REQ_CNT:
+    case DataType.SESS_CNT:
+    case DataType.HTTP_FAIL_CNT:
+      return DecodedType.UINT;
+
+    case DataType.BYTES_IN_CNT:
+    case DataType.BYTES_OUT_CNT:
+      return DecodedType.ULONGLONG;
+
+    case DataType.BYTES_IN_RATE:
+    case DataType.BYTES_OUT_RATE:
+    case DataType.CONN_RATE:
+    case DataType.GPC0_RATE:
+    case DataType.GPC1_RATE:
+    case DataType.HTTP_ERR_RATE:
+    case DataType.HTTP_REQ_RATE:
+    case DataType.SESS_RATE:
+    case DataType.HTTP_FAIL_RATE:
+      return DecodedType.FREQUENCY_COUNTER;
+
+    default:
+      throw new Error(`Unhandled DataType ${dataType as string}`);
   }
 }
 

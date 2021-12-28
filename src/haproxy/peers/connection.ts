@@ -17,18 +17,22 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-import * as messages from "./messages";
-import * as VarInt from "./varint";
-import d from "debug";
-import PeerParser from "./protocol-parser";
-import { blockingRead } from "../../stream";
-import { ControlMessageClass, MessageClass, UpdateMessageType } from "./wire-types";
-import { Duplex } from "stream";
-import { EntryUpdate, TableDefinition } from "./types";
-import { EventEmitter } from "events";
-import { Message } from "./messages";
+import * as messages from './messages';
+import * as VarInt from './varint';
+import d from 'debug';
+import PeerParser from './protocol-parser';
+import { blockingRead } from '../../stream';
+import {
+  ControlMessageClass,
+  MessageClass,
+  UpdateMessageType,
+} from './wire-types';
+import { Duplex } from 'stream';
+import { EntryUpdate, TableDefinition } from './types';
+import { EventEmitter } from 'events';
+import { Message } from './messages';
 
-const debug = d("manager:haproxy:peers:connection");
+const debug = d('manager:haproxy:peers:connection');
 
 export enum PeerDirection {
   OUT,
@@ -42,8 +46,8 @@ export interface PeerConnectionOptions {
 }
 
 export enum SynchronizationType {
-  PARTIAL = "partial",
-  FULL = "full",
+  PARTIAL = 'partial',
+  FULL = 'full',
 }
 
 enum PeerConnectionState {
@@ -55,18 +59,40 @@ enum PeerConnectionState {
 }
 
 export declare interface PeerConnection {
-  emit(event: "entryUpdate", entry: EntryUpdate, tableDefinition: TableDefinition): boolean;
-  emit(event: "synchronizationFinished", type: SynchronizationType): boolean;
-  emit(event: "synchronizationStarted"): boolean;
-  emit(event: "tableDefinition", tableDefinition: TableDefinition): boolean;
-  on(event: "entryUpdate", listener: (entry: EntryUpdate, tableDefinition: TableDefinition) => void): this;
-  on(event: "synchronizationFinished", listener: (type: SynchronizationType) => void): this;
-  on(event: "synchronizationStarted", listener: () => void): this;
-  on(event: "tableDefinition", listener: (tableDefinition: TableDefinition) => void): this;
-  once(event: "entryUpdate", listener: (entry: EntryUpdate, tableDefinition: TableDefinition) => void): this;
-  once(event: "synchronizationFinished", listener: (type: SynchronizationType) => void): this;
-  once(event: "synchronizationStarted", listener: () => void): this;
-  once(event: "tableDefinition", listener: (tableDefinition: TableDefinition) => void): this;
+  emit(
+    event: 'entryUpdate',
+    entry: EntryUpdate,
+    tableDefinition: TableDefinition
+  ): boolean;
+  emit(event: 'synchronizationFinished', type: SynchronizationType): boolean;
+  emit(event: 'synchronizationStarted'): boolean;
+  emit(event: 'tableDefinition', tableDefinition: TableDefinition): boolean;
+  on(
+    event: 'entryUpdate',
+    listener: (entry: EntryUpdate, tableDefinition: TableDefinition) => void
+  ): this;
+  on(
+    event: 'synchronizationFinished',
+    listener: (type: SynchronizationType) => void
+  ): this;
+  on(event: 'synchronizationStarted', listener: () => void): this;
+  on(
+    event: 'tableDefinition',
+    listener: (tableDefinition: TableDefinition) => void
+  ): this;
+  once(
+    event: 'entryUpdate',
+    listener: (entry: EntryUpdate, tableDefinition: TableDefinition) => void
+  ): this;
+  once(
+    event: 'synchronizationFinished',
+    listener: (type: SynchronizationType) => void
+  ): this;
+  once(event: 'synchronizationStarted', listener: () => void): this;
+  once(
+    event: 'tableDefinition',
+    listener: (tableDefinition: TableDefinition) => void
+  ): this;
 }
 
 export class PeerConnection extends EventEmitter {
@@ -78,18 +104,20 @@ export class PeerConnection extends EventEmitter {
     super();
 
     if (options.direction !== PeerDirection.OUT) {
-      throw new Error("Handling of non-outgoing connections is not yet implemented.");
+      throw new Error(
+        'Handling of non-outgoing connections is not yet implemented.'
+      );
     }
 
-    this.parser.on("data", async (message: Message) => {
+    this.parser.on('data', async (message: Message) => {
       await this.handle(message);
     });
-    this.parser.on("error", (err) => {
+    this.parser.on('error', (err) => {
       this.socket.destroy(err);
     });
-    this.socket.on("close", () => {
+    this.socket.on('close', () => {
       if (this.heartbeatTimer) {
-        debug("stopping heartbeats");
+        debug('stopping heartbeats');
         clearInterval(this.heartbeatTimer);
       }
     });
@@ -102,9 +130,9 @@ export class PeerConnection extends EventEmitter {
    *
    * @param autoSynchronization Whether to send a synchronization request after performing the handshake.
    */
-  start(autoSynchronization: boolean = false): void {
+  start(autoSynchronization = false): void {
     if (this.state !== PeerConnectionState.NOT_STARTED) {
-      throw new Error("A connection can only be started once");
+      throw new Error('A connection can only be started once');
     }
 
     switch (this.options.direction) {
@@ -116,13 +144,16 @@ export class PeerConnection extends EventEmitter {
         (async () => {
           try {
             const status = parseInt(await this.readStatus(), 10);
-            debug("received status %s", status);
+            debug('received status %s', status);
             if (status === 200) {
               this.state = PeerConnectionState.ESTABLISHED;
               this.socket.pipe(this.parser);
 
               this.sendHeartbeat();
-              this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 1_500);
+              this.heartbeatTimer = setInterval(
+                () => this.sendHeartbeat(),
+                1_500
+              );
 
               if (autoSynchronization) {
                 this.sendSychronizationRequest();
@@ -130,13 +161,15 @@ export class PeerConnection extends EventEmitter {
             } else {
               throw new Error(`Unexpected status '${status}'.`);
             }
-          } catch (e) {
-            this.socket.destroy(e);
+          } catch (err) {
+            if (err instanceof Error) {
+              this.socket.destroy(err);
+            }
           }
         })();
         break;
       case PeerDirection.IN:
-        throw new Error("Not yet implemented, see constructor()");
+        throw new Error('Not yet implemented, see constructor()');
     }
   }
 
@@ -145,8 +178,10 @@ export class PeerConnection extends EventEmitter {
   }
 
   private sendHello(): void {
-    debug("sending hello");
-    this.socket.write(`HAProxyS 2.1\n${this.options.peerName}\n${this.options.myName} 0 0\n`);
+    debug('sending hello');
+    this.socket.write(
+      `HAProxyS 2.1\n${this.options.peerName}\n${this.options.myName} 0 0\n`
+    );
   }
 
   private async readStatus(): Promise<string> {
@@ -154,49 +189,73 @@ export class PeerConnection extends EventEmitter {
       const chunk = await blockingRead(this.socket);
       if (!chunk) {
         this.socket.destroy();
-        throw new Error("Connection is dead");
+        throw new Error('Connection is dead');
       }
       for (const pair of chunk.entries()) {
         if (pair[1] === 0x0a) {
           this.socket.unshift(chunk.slice(pair[0] + 1));
-          return chunk.slice(0, pair[0]).toString("utf8");
+          return chunk.slice(0, pair[0]).toString('utf8');
         }
       }
       this.socket.destroy();
-      throw new Error("Expected to a newline within a single read");
+      throw new Error('Expected to a newline within a single read');
     }
   }
 
   private sendHeartbeat(): void {
-    debug("sending heartbeat");
-    this.socket.write(Buffer.from([MessageClass.CONTROL, ControlMessageClass.HEARTBEAT]));
+    debug('sending heartbeat');
+    this.socket.write(
+      Buffer.from([MessageClass.CONTROL, ControlMessageClass.HEARTBEAT])
+    );
   }
 
   private sendSychronizationRequest(): void {
-    debug("sending synchronization request");
-    this.socket.write(Buffer.from([MessageClass.CONTROL, ControlMessageClass.SYNCHRONIZATION_REQUEST]));
-    this.emit("synchronizationStarted");
+    debug('sending synchronization request');
+    this.socket.write(
+      Buffer.from([
+        MessageClass.CONTROL,
+        ControlMessageClass.SYNCHRONIZATION_REQUEST,
+      ])
+    );
+    this.emit('synchronizationStarted');
   }
 
   private sendSynchronizationConfirmed(): void {
-    debug("sending synchronization confirmed");
-    this.socket.write(Buffer.from([MessageClass.CONTROL, ControlMessageClass.SYNCHRONIZATION_CONFIRMED]));
+    debug('sending synchronization confirmed');
+    this.socket.write(
+      Buffer.from([
+        MessageClass.CONTROL,
+        ControlMessageClass.SYNCHRONIZATION_CONFIRMED,
+      ])
+    );
   }
 
-  private sendSynchronizationFinished(type: SynchronizationType = SynchronizationType.PARTIAL): void {
-    debug("sending %s synchronization finished", type);
+  private sendSynchronizationFinished(
+    type: SynchronizationType = SynchronizationType.PARTIAL
+  ): void {
+    debug('sending %s synchronization finished', type);
     switch (type) {
       case SynchronizationType.PARTIAL:
-        this.socket.write(Buffer.from([MessageClass.CONTROL, ControlMessageClass.SYNCHRONIZATION_FINISHED]));
+        this.socket.write(
+          Buffer.from([
+            MessageClass.CONTROL,
+            ControlMessageClass.SYNCHRONIZATION_FINISHED,
+          ])
+        );
         break;
       case SynchronizationType.FULL:
-        this.socket.write(Buffer.from([MessageClass.CONTROL, ControlMessageClass.SYNCHRONIZATION_PARTIAL]));
+        this.socket.write(
+          Buffer.from([
+            MessageClass.CONTROL,
+            ControlMessageClass.SYNCHRONIZATION_PARTIAL,
+          ])
+        );
         break;
     }
   }
 
   private sendAck(tableId: number, updateId: number): void {
-    debug("sending ack for update %d in table %d", updateId, tableId);
+    debug('sending ack for update %d in table %d', updateId, tableId);
 
     const encodedTableId = VarInt.encode(tableId);
     const encodedUpdateId = Buffer.alloc(4);
@@ -212,25 +271,28 @@ export class PeerConnection extends EventEmitter {
 
   private async handle(message: Message): Promise<void> {
     if (message instanceof messages.Heartbeat) {
-      debug("received heartbeat");
+      debug('received heartbeat');
     } else if (message instanceof messages.TableDefinition) {
-      debug("received table definition");
-      this.emit("tableDefinition", message.definition);
+      debug('received table definition');
+      this.emit('tableDefinition', message.definition);
     } else if (message instanceof messages.SynchronizationRequest) {
-      debug("received synchronization request");
+      debug('received synchronization request');
       this.sendSynchronizationFinished();
     } else if (message instanceof messages.SynchronizationPartial) {
-      debug("finished partial synchronization");
+      debug('finished partial synchronization');
       this.sendSynchronizationConfirmed();
-      this.emit("synchronizationFinished", SynchronizationType.PARTIAL);
+      this.emit('synchronizationFinished', SynchronizationType.PARTIAL);
     } else if (message instanceof messages.SynchronizationFull) {
-      debug("finished full synchronization");
+      debug('finished full synchronization');
       this.sendSynchronizationConfirmed();
-      this.emit("synchronizationFinished", SynchronizationType.FULL);
+      this.emit('synchronizationFinished', SynchronizationType.FULL);
     } else if (message instanceof messages.EntryUpdate) {
-      debug("received entry update");
-      this.sendAck(message.tableDefinition.senderTableId, message.update.updateId);
-      this.emit("entryUpdate", message.update, message.tableDefinition);
+      debug('received entry update');
+      this.sendAck(
+        message.tableDefinition.senderTableId,
+        message.update.updateId
+      );
+      this.emit('entryUpdate', message.update, message.tableDefinition);
     }
   }
 }

@@ -17,9 +17,13 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-import { TableKeyType, DataType } from "./wire-types";
+import {
+  TableKeyType,
+  DataType,
+  DecodedType,
+  FrequencyCounter,
+} from './wire-types';
 
-// tslint:disable: max-classes-per-file
 export abstract class TableKey<T> {
   abstract readonly type: TableKeyType;
   abstract readonly key: T;
@@ -42,12 +46,12 @@ export class StringTableKey extends TableKey<string> {
 }
 
 export abstract class TableValue<T> {
-  abstract readonly type: DataType.DecodedType;
+  abstract readonly type: DecodedType;
   abstract readonly value: T;
 }
 
 export class SignedInt32TableValue extends TableValue<number> {
-  readonly type = DataType.DecodedType.SINT;
+  readonly type = DecodedType.SINT;
 
   constructor(public value: number) {
     super();
@@ -55,7 +59,7 @@ export class SignedInt32TableValue extends TableValue<number> {
 }
 
 export class UnsignedInt32TableValue extends TableValue<number> {
-  readonly type = DataType.DecodedType.UINT;
+  readonly type = DecodedType.UINT;
 
   constructor(public value: number) {
     super();
@@ -63,9 +67,17 @@ export class UnsignedInt32TableValue extends TableValue<number> {
 }
 
 export class UnsignedInt64TableValue extends TableValue<number> {
-  readonly type = DataType.DecodedType.ULONGLONG;
+  readonly type = DecodedType.ULONGLONG;
 
   constructor(public value: number) {
+    super();
+  }
+}
+
+export class FrequencyCounterTableValue extends TableValue<FrequencyCounter> {
+  readonly type = DecodedType.FREQUENCY_COUNTER;
+
+  constructor(public value: FrequencyCounter) {
     super();
   }
 }

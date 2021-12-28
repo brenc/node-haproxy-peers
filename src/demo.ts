@@ -17,46 +17,61 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-import net from "net";
+import net from 'net';
+import d from 'debug';
 import {
   PeerConnection,
   PeerDirection,
   TableDefinition,
   EntryUpdate,
   SynchronizationType,
-} from "./haproxy/peers";
-import { DataType } from "./haproxy/peers/wire-types";
+} from './haproxy/peers';
+import { DataType } from './haproxy/peers/wire-types';
+
+const debug = d('manager:demo');
 
 function reconnect() {
-  console.log("connecting");
-  const socket = net.connect(20000, "127.0.0.1");
+  debug('connecting');
+
+  const socket = net.connect(8102, 'test-proxy');
+
   const conn = new PeerConnection(socket, {
-    myName: "tracker",
-    peerName: "haproxy.example.com",
+    myName: 'tracker',
+    peerName: 'test-proxy',
     direction: PeerDirection.OUT,
   });
-  socket.on("close", () => setTimeout(reconnect, 1500));
-  socket.on("error", (e) => {
-    console.log(e);
+
+  socket.on('close', () => setTimeout(reconnect, 500));
+
+  socket.on('error', (e) => {
+    debug(e);
   });
 
-  conn.on("tableDefinition", (def: TableDefinition) => {
-    console.log(`Received table defition ${def.name}:`, def);
+  conn.on('tableDefinition', (def: TableDefinition) => {
+    debug(`Received table defition ${def.name}:`, def);
   });
-  conn.on("entryUpdate", (update: EntryUpdate, def: TableDefinition) => {
-    console.log(
-      `Received entry update in table ${def.name} for key '${update.key.key}':`,
-      new Map(Array.from(update.values.entries()).map(([k, v]) => {
-        return [DataType[k], v];
-      }))
+
+  conn.on('entryUpdate', (update: EntryUpdate, def: TableDefinition) => {
+    debug(
+      `Received entry update in table ${def.name} for key '${
+        update.key.key as string
+      }':`,
+      new Map(
+        Array.from(update.values.entries()).map(([k, v]) => {
+          return [DataType[k], v];
+        })
+      )
     );
   });
-  conn.on("synchronizationStarted", () => {
-    console.log(`Started sync`);
+
+  conn.on('synchronizationStarted', () => {
+    debug(`Started sync`);
   });
-  conn.on("synchronizationFinished", (type: SynchronizationType) => {
-    console.log(`Finished sync ${type}`);
+
+  conn.on('synchronizationFinished', (type: SynchronizationType) => {
+    debug(`Finished sync ${type}`);
   });
+
   conn.start(true);
 }
 reconnect();

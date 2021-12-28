@@ -17,8 +17,6 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-// tslint:disable: no-bitwise
-
 /**
  * Decodes the given buffer as a varint.
  * Returns a pair containing the number of consumed bytes and the parsed int.
@@ -27,7 +25,7 @@
  */
 export function decode(buffer: Buffer): [number, number] {
   if (buffer.length < 1) {
-    throw new Error("Insufficient data");
+    throw new Error('Insufficient data');
   }
   let val = buffer[0];
   buffer = buffer.slice(1);
@@ -40,7 +38,7 @@ export function decode(buffer: Buffer): [number, number] {
       return [2 + pair[0], val];
     }
   }
-  throw new Error("Insufficient data");
+  throw new Error('Insufficient data');
 }
 
 /**

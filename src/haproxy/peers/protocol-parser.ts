@@ -17,10 +17,18 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-import * as messages from "./messages";
-import * as VarInt from "./varint";
-import d from "debug";
-import { ControlMessageClass, DataType, MessageClass, TableKeyType, UpdateMessageType } from "./wire-types";
+import * as messages from './messages';
+import * as VarInt from './varint';
+import d from 'debug';
+import {
+  ControlMessageClass,
+  DataType,
+  DecodedType,
+  getDecodedType,
+  MessageClass,
+  TableKeyType,
+  UpdateMessageType,
+} from './wire-types';
 import {
   SignedInt32TableKey,
   StringTableKey,
@@ -29,10 +37,11 @@ import {
   TableValue,
   UnsignedInt32TableValue,
   UnsignedInt64TableValue,
-} from "./types";
-import { Transform, TransformCallback, TransformOptions } from "stream";
+  FrequencyCounterTableValue,
+} from './types';
+import { Transform, TransformCallback, TransformOptions } from 'stream';
 
-const debug = d("manager:haproxy:peers:protocol-parser");
+const debug = d('manager:haproxy:peers:protocol-parser');
 
 /**
  * Helper class for safe buffer handling.
@@ -46,10 +55,10 @@ class Pointer {
    * Throws the given error message (or a generic message) if size
    * is exceeded after the consumption.
    */
-  consume(amount: number, error?: any): void {
+  consume(amount: number, error?: string): void {
     this.position += amount;
     if (this.position > this.size) {
-      throw new Error(error || "Pointer exceeded");
+      throw new Error(error || 'Pointer exceeded');
     }
   }
 
@@ -58,9 +67,9 @@ class Pointer {
    * Throws the given error message (or a generic message) if size
    * would be exceeded when calling `consume(amount)`.
    */
-  assert(amount: number, error?: any): void {
+  assert(amount: number, error?: string): void {
     if (this.position + amount > this.size) {
-      throw new Error(error || "Pointer exceeded");
+      throw new Error(error || 'Pointer exceeded');
     }
   }
 
@@ -76,7 +85,7 @@ class Pointer {
    * If `end` is given the slice will contain exactly `end` bytes. An error is thrown if
    * the Pointer does not contain `end` bytes.
    */
-  sliceBuffer(buffer: Buffer, end?: number, error?: any): Buffer {
+  sliceBuffer(buffer: Buffer, end?: number, error?: string): Buffer {
     if (end !== undefined) {
       this.assert(end, error);
       return buffer.slice(this.position, this.position + end);
@@ -96,12 +105,15 @@ class Pointer {
 export class PeerParser extends Transform {
   private buffer: Buffer;
   private lastTableDefinition?: TableDefinition;
-  private lastUpdateId?: number;
+  private lastUpdateId: number;
+  private lastTick: number;
 
   constructor(options: TransformOptions = {}) {
     options.readableObjectMode = true;
     super(options);
     this.buffer = Buffer.alloc(0);
+    this.lastUpdateId = 0;
+    this.lastTick = 0;
   }
 
   /**
@@ -138,10 +150,22 @@ export class PeerParser extends Transform {
 
     const map = new Map<ControlMessageClass, new () => messages.Message>([
       [ControlMessageClass.HEARTBEAT, messages.Heartbeat],
-      [ControlMessageClass.SYNCHRONIZATION_REQUEST, messages.SynchronizationRequest],
-      [ControlMessageClass.SYNCHRONIZATION_FINISHED, messages.SynchronizationFull],
-      [ControlMessageClass.SYNCHRONIZATION_PARTIAL, messages.SynchronizationPartial],
-      [ControlMessageClass.SYNCHRONIZATION_CONFIRMED, messages.SynchronizationConfirmed],
+      [
+        ControlMessageClass.SYNCHRONIZATION_REQUEST,
+        messages.SynchronizationRequest,
+      ],
+      [
+        ControlMessageClass.SYNCHRONIZATION_FINISHED,
+        messages.SynchronizationFull,
+      ],
+      [
+        ControlMessageClass.SYNCHRONIZATION_PARTIAL,
+        messages.SynchronizationPartial,
+      ],
+      [
+        ControlMessageClass.SYNCHRONIZATION_CONFIRMED,
+        messages.SynchronizationConfirmed,
+      ],
     ]);
     const messageClass = map.get(buffer[0]);
     if (!messageClass) {
@@ -170,7 +194,9 @@ export class PeerParser extends Transform {
       case UpdateMessageType.INCREMENTAL_ENTRY_UPDATE:
       case UpdateMessageType.INCREMENTAL_ENTRY_UPDATE_TIMED: {
         if (this.lastTableDefinition === undefined) {
-          throw new Error("Unable to handle entry updates without a stick table definition");
+          throw new Error(
+            'Unable to handle entry updates without a stick table definition'
+          );
         }
 
         const incremental =
@@ -202,11 +228,11 @@ export class PeerParser extends Transform {
    * @param buffer
    */
   private tryParseTableDefinition(buffer: Buffer): number | null {
-    debug("attempting to parse table definition");
+    debug('attempting to parse table definition');
+
     let length: number,
       senderTableId: number,
       nameLength: number,
-      name: string,
       keyType: TableKeyType,
       keyLen: number,
       dataType: DataType,
@@ -222,41 +248,80 @@ export class PeerParser extends Transform {
     }
 
     [consumed, senderTableId] = VarInt.decode(pointer.sliceBuffer(buffer));
-    pointer.consume(consumed, "Incorrect packet length (senderTableId)");
+    pointer.consume(consumed, 'Incorrect packet length (senderTableId)');
 
     [consumed, nameLength] = VarInt.decode(pointer.sliceBuffer(buffer));
-    pointer.consume(consumed, "Incorrect packet length (nameLength)");
+    pointer.consume(consumed, 'Incorrect packet length (nameLength)');
 
-    name = pointer.sliceBuffer(buffer, nameLength, "Insufficient data (name)").toString("binary");
-    pointer.consume(nameLength, "Incorrect packet length (name)");
+    const name = pointer
+      .sliceBuffer(buffer, nameLength, 'Insufficient data (name)')
+      .toString('binary');
+    pointer.consume(nameLength, 'Incorrect packet length (name)');
 
     [consumed, keyType] = VarInt.decode(pointer.sliceBuffer(buffer));
-    pointer.consume(consumed, "Incorrect packet length (keyType)");
+    pointer.consume(consumed, 'Incorrect packet length (keyType)');
+
     if (!TableKeyType[keyType]) {
       throw new Error(`Incorrect key type '${keyType}'`);
     }
 
     [consumed, keyLen] = VarInt.decode(pointer.sliceBuffer(buffer));
-    pointer.consume(consumed, "Incorrect packet length (keyLen)");
+    pointer.consume(consumed, 'Incorrect packet length (keyLen)');
+
     [consumed, dataType] = VarInt.decode(pointer.sliceBuffer(buffer));
-    pointer.consume(consumed, "Incorrect packet length (dataType)");
+    pointer.consume(consumed, 'Incorrect packet length (dataType)');
+
     [consumed, expiry] = VarInt.decode(pointer.sliceBuffer(buffer));
-    pointer.consume(consumed, "Incorrect packet length (expiry)");
+    pointer.consume(consumed, 'Incorrect packet length (expiry)');
+
+    // From here until the end of the message, data alternates between the
+    // frequency counter type and the frequency counter period for each
+    // frequency counter added to the stick table.
+    const counters: [number, number][] = [];
+    let counterType: number | null = null;
+    let counterPeriod: number | null = null;
+    while (!pointer.isEmpty()) {
+      if (counterType === null) {
+        [consumed, counterType] = VarInt.decode(pointer.sliceBuffer(buffer));
+        pointer.consume(consumed, 'Incorrect packet length (counterType)');
+      } else {
+        [consumed, counterPeriod] = VarInt.decode(pointer.sliceBuffer(buffer));
+        pointer.consume(consumed, 'Incorrect packet length (counterPeriod)');
+      }
+
+      if (counterType !== null && counterPeriod !== null) {
+        counters.push([counterType, counterPeriod]);
+        counterType = null;
+        counterPeriod = null;
+      }
+    }
 
     if (!pointer.isEmpty()) {
-      throw new Error("Incorrect packet length (total)");
+      throw new Error('Incorrect packet length (total)');
     }
 
-    const dataTypes = [];
-    for (const type of Object.values(DataType)) {
-      if (typeof type !== "number") {
-        continue;
-      }
-      // tslint:disable-next-line: no-bitwise
-      if ((dataType >> type) & 1) {
-        dataTypes.push(type);
+    const dataTypes: number[] = [];
+    for (let i = 0; i < 32; i++) {
+      if ((dataType >> i) & 1) {
+        dataTypes.push(i);
       }
     }
+
+    // for (const type of Object.values(DataType)) {
+    //   debug('XXX type', type);
+    //   if (typeof type !== 'number') {
+    //     continue;
+    //   }
+
+    //   debug('XXX data type: %o, type: %o', dataType, type);
+    //   if ((dataType >> type) & 1) {
+    //     dataTypes.push(type);
+    //   }
+    // }
+
+    // debug('"%s" "%s" "%s" "%s" "%s" "%s", "%s" "%o" "%o"', senderTableId,
+    //   nameLength, name, keyType, keyLen, dataType, expiry, pointer,
+    //   dataTypes);
 
     const definition = {
       senderTableId,
@@ -265,6 +330,7 @@ export class PeerParser extends Transform {
       keyLen,
       dataTypes,
       expiry,
+      counters,
     };
     this.lastTableDefinition = definition;
     this.push(new messages.TableDefinition(definition));
@@ -286,15 +352,20 @@ export class PeerParser extends Transform {
     options: {
       timed: boolean;
       incremental: boolean;
-    },
+    }
   ): number | null {
-    debug("attempting to parse entry update %o", options);
+    debug('attempting to parse entry update %o', options);
+
     const tableDefinition = this.lastTableDefinition;
     if (tableDefinition === undefined) {
-      throw new Error("Unable to parse entry update without a stick table definition.");
+      throw new Error(
+        'Unable to parse entry update without a stick table definition.'
+      );
     }
     if (options.incremental && this.lastUpdateId === undefined) {
-      throw new Error("Unable to parse incremental entry update without an old update.");
+      throw new Error(
+        'Unable to parse incremental entry update without an old update.'
+      );
     }
 
     let length: number,
@@ -302,8 +373,9 @@ export class PeerParser extends Transform {
       expiry: number | null = null,
       key: TableKey<unknown>;
 
-    let consumed;
+    let consumed: number;
     [consumed, length] = VarInt.decode(buffer);
+
     const pointer = new Pointer(consumed + length);
     pointer.consume(consumed);
     length += consumed;
@@ -312,61 +384,146 @@ export class PeerParser extends Transform {
     }
 
     if (options.incremental) {
-      updateId = this.lastUpdateId! + 1;
+      updateId = this.lastUpdateId + 1;
     } else {
-      pointer.assert(4, "Insufficient data (updateId)");
+      pointer.assert(4, 'Insufficient data (updateId)');
       updateId = buffer.readUInt32BE(pointer.get());
-      pointer.consume(4, "Incorrect packet length (updateId)");
+      pointer.consume(4, 'Incorrect packet length (updateId)');
     }
+
     if (options.timed) {
-      pointer.assert(4, "Insufficient data (expiry)");
+      pointer.assert(4, 'Insufficient data (expiry)');
       expiry = buffer.readUInt32BE(pointer.get());
-      pointer.consume(4, "Incorrect packet length (expiry)");
+      pointer.consume(4, 'Incorrect packet length (expiry)');
     }
+
     switch (tableDefinition.keyType) {
       case TableKeyType.STRING: {
         let keyLen;
         [consumed, keyLen] = VarInt.decode(pointer.sliceBuffer(buffer));
-        pointer.consume(consumed, "Incorrect packet length (keyLen)");
-        pointer.assert(keyLen, "Insufficient data (key)");
-        key = new StringTableKey(pointer.sliceBuffer(buffer, keyLen).toString("binary"));
-        pointer.consume(keyLen, "Incorrect packet length (key)");
+
+        pointer.consume(consumed, 'Incorrect packet length (keyLen)');
+
+        pointer.assert(keyLen, 'Insufficient data (key)');
+
+        key = new StringTableKey(
+          pointer.sliceBuffer(buffer, keyLen).toString('binary')
+        );
+
+        pointer.consume(keyLen, 'Incorrect packet length (key)');
+
         break;
       }
+
       case TableKeyType.SINT:
-        pointer.assert(4, "Insufficient data (key)");
+        pointer.assert(4, 'Insufficient data (key)');
+
         key = new SignedInt32TableKey(buffer.readInt32BE(pointer.get()));
-        pointer.consume(4, "Incorrect packet length (key)");
+
+        pointer.consume(4, 'Incorrect packet length (key)');
+
         break;
+
+      // TODO: support ipv4/6 key types.
+
       default:
-        throw new Error(`Unable to handle key type '${tableDefinition.keyType}'.`);
+        throw new Error(
+          `Unable to handle key type '${tableDefinition.keyType}'.`
+        );
     }
 
     const values: Map<DataType, TableValue<unknown>> = new Map();
     for (const dataType of tableDefinition.dataTypes) {
-      switch (DataType.getDecodedType(dataType)) {
-        case DataType.DecodedType.UINT: {
-          let number;
-          [consumed, number] = VarInt.decode(pointer.sliceBuffer(buffer));
-          values.set(dataType, new UnsignedInt32TableValue(number));
-          pointer.consume(consumed, `Incorrect packet length (value for '${dataType}')`);
+      debug(
+        'data type is %s (%d) which is a %s',
+        DataType[dataType],
+        dataType,
+        DecodedType[getDecodedType(dataType)]
+      );
+
+      let decodedInt;
+      [consumed, decodedInt] = VarInt.decode(pointer.sliceBuffer(buffer));
+      pointer.consume(
+        consumed,
+        `Incorrect packet length (value for '${dataType}')`
+      );
+
+      debug('decoded int:', decodedInt);
+
+      switch (getDecodedType(dataType)) {
+        case DecodedType.UINT: {
+          values.set(dataType, new UnsignedInt32TableValue(decodedInt));
           break;
         }
-        case DataType.DecodedType.ULONGLONG: {
-          let number;
-          [consumed, number] = VarInt.decode(pointer.sliceBuffer(buffer));
-          values.set(dataType, new UnsignedInt64TableValue(number));
-          pointer.consume(consumed, `Incorrect packet length (value for '${dataType}')`);
+
+        case DecodedType.ULONGLONG: {
+          values.set(dataType, new UnsignedInt64TableValue(decodedInt));
           break;
         }
+
+        case DecodedType.FREQUENCY_COUNTER: {
+          const currentTick = decodedInt;
+          // const currentTick = Date.now() + -decodedInt;
+          // debug(currentTick);
+          // debug(currentTick - this.lastTick);
+          // this.lastTick = currentTick;
+
+          let currentCounter;
+          [consumed, currentCounter] = VarInt.decode(
+            pointer.sliceBuffer(buffer)
+          );
+
+          pointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          let previousCounter;
+          [consumed, previousCounter] = VarInt.decode(
+            pointer.sliceBuffer(buffer)
+          );
+
+          pointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          debug(
+            'current tick: %s, current counter: %d, previous counter: %d',
+            currentTick,
+            currentCounter,
+            previousCounter
+          );
+
+          values.set(
+            dataType,
+            new FrequencyCounterTableValue({
+              currentTick,
+              currentCounter,
+              previousCounter,
+            })
+          );
+
+          break;
+        }
+
         default:
-          throw new Error(`Unable to handle decoded data type '${DataType.getDecodedType(dataType)}'.`);
+          throw new Error(
+            `Unable to handle decoded data type '${getDecodedType(dataType)}'.`
+          );
       }
     }
 
-    if (!pointer.isEmpty()) {
-      throw new Error("Incorrect packet length (total)");
-    }
+    // let something;
+    // let numFields = 0;
+    // while (!pointer.isEmpty()) {
+    //   numFields++;
+    //   [consumed, something] = VarInt.decode(pointer.sliceBuffer(buffer));
+    //   pointer.consume(consumed, 'Incorrect packet something');
+    //   debug('EXTRA FIELD: %s', something);
+    // }
+
+    // debug('number of extra fields: %d, point: %o', numFields, pointer);
 
     const update = {
       updateId,
@@ -374,13 +531,23 @@ export class PeerParser extends Transform {
       key,
       values,
     };
+
+    debug('XXX update:', update);
+
+    if (!pointer.isEmpty()) {
+      throw new Error('Incorrect packet length (total)');
+    }
     this.lastUpdateId = update.updateId;
     this.push(new messages.EntryUpdate(tableDefinition, update));
 
     return pointer.get();
   }
 
-  _transform(chunk: Buffer, _encoding: string, callback: TransformCallback): void {
+  _transform(
+    chunk: Buffer,
+    _encoding: string,
+    callback: TransformCallback
+  ): void {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     try {
       let pointer = 0;
@@ -393,8 +560,11 @@ export class PeerParser extends Transform {
       }
       this.buffer = Buffer.from(this.buffer.slice(pointer));
       callback();
-    } catch (e) {
-      callback(e);
+    } catch (err) {
+      // XXX is this correct?
+      if (err instanceof Error) {
+        callback(err);
+      }
     }
   }
 }
