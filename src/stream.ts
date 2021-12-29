@@ -17,26 +17,43 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-import d from "debug";
-import { EventEmitter } from "events";
-import { Readable } from "stream";
+import d from 'debug';
+import { EventEmitter } from 'events';
+import { Readable } from 'stream';
 
-const debug = d("manager:stream");
+const debug = d('manager:stream');
 
-async function eventPromise(emitter: EventEmitter, event: string): Promise<unknown[]> {
-  return new Promise(function (resolve: (args: unknown[]) => void, reject: (err: any) => void): void {
-    emitter.once("error", reject);
+async function eventPromise(
+  emitter: EventEmitter,
+  event: string
+): Promise<unknown[]> {
+  return new Promise(function (
+    resolve: (args: unknown[]) => void,
+    reject: (err: unknown) => void
+  ): void {
+    emitter.once('error', reject);
     emitter.once(event, (...args) => resolve(args));
   });
 }
 
-export async function blockingRead(stream: Readable, encoding?: null): Promise<Buffer | null>;
-export async function blockingRead(stream: Readable, encoding: string): Promise<string | null>;
-export async function blockingRead(stream: Readable, encoding: string | null = null): Promise<Buffer | string | null> {
+export async function blockingRead(
+  stream: Readable,
+  encoding?: null
+): Promise<Buffer | null>;
+
+export async function blockingRead(
+  stream: Readable,
+  encoding: string
+): Promise<string | null>;
+
+export async function blockingRead(
+  stream: Readable,
+  encoding: string | null = null
+): Promise<Buffer | string | null> {
   let chunk = stream.read();
   if (!chunk) {
-    debug("read blocks");
-    await eventPromise(stream, "readable");
+    debug('read blocks');
+    await eventPromise(stream, 'readable');
     chunk = stream.read();
   }
 

@@ -101,7 +101,6 @@ class Pointer {
   }
 }
 
-// tslint:disable-next-line: max-classes-per-file
 export class PeerParser extends Transform {
   private buffer: Buffer;
   private lastTableDefinition?: TableDefinition;
@@ -298,24 +297,15 @@ export class PeerParser extends Transform {
       throw new Error('Incorrect packet length (total)');
     }
 
+    // This tests the packed value for every data type possible otherwise if
+    // a new data type is added in the future we can get extra data in the
+    // message that we're not prepared to handle.
     const dataTypes: number[] = [];
     for (let i = 0; i < 32; i++) {
       if ((dataType >> i) & 1) {
         dataTypes.push(i);
       }
     }
-
-    // for (const type of Object.values(DataType)) {
-    //   debug('XXX type', type);
-    //   if (typeof type !== 'number') {
-    //     continue;
-    //   }
-
-    //   debug('XXX data type: %o, type: %o', dataType, type);
-    //   if ((dataType >> type) & 1) {
-    //     dataTypes.push(type);
-    //   }
-    // }
 
     // debug('"%s" "%s" "%s" "%s" "%s" "%s", "%s" "%o" "%o"', senderTableId,
     //   nameLength, name, keyType, keyLen, dataType, expiry, pointer,
@@ -330,7 +320,9 @@ export class PeerParser extends Transform {
       expiry,
       counters,
     };
+
     this.lastTableDefinition = definition;
+
     this.push(new messages.TableDefinition(definition));
 
     return pointer.get();
@@ -460,11 +452,8 @@ export class PeerParser extends Transform {
         }
 
         case DecodedType.FREQUENCY_COUNTER: {
+          // TODO: does this need to be processed in some way?
           const currentTick = decodedInt;
-          // const currentTick = Date.now() + -decodedInt;
-          // debug(currentTick);
-          // debug(currentTick - this.lastTick);
-          // this.lastTick = currentTick;
 
           let currentCounter;
           [consumed, currentCounter] = VarInt.decode(
@@ -487,7 +476,9 @@ export class PeerParser extends Transform {
           );
 
           debug(
-            'current tick: %s, current counter: %d, previous counter: %d',
+            'data type: %s, current tick: %s, current counter: %d, ' +
+              'previous counter: %d',
+            DataType[dataType],
             currentTick,
             currentCounter,
             previousCounter
@@ -512,16 +503,9 @@ export class PeerParser extends Transform {
       }
     }
 
-    // let something;
-    // let numFields = 0;
-    // while (!pointer.isEmpty()) {
-    //   numFields++;
-    //   [consumed, something] = VarInt.decode(pointer.sliceBuffer(buffer));
-    //   pointer.consume(consumed, 'Incorrect packet something');
-    //   debug('EXTRA FIELD: %s', something);
-    // }
-
-    // debug('number of extra fields: %d, point: %o', numFields, pointer);
+    if (!pointer.isEmpty()) {
+      throw new Error('Incorrect packet length (total)');
+    }
 
     const update = {
       updateId,
@@ -530,11 +514,6 @@ export class PeerParser extends Transform {
       values,
     };
 
-    debug('XXX update:', update);
-
-    if (!pointer.isEmpty()) {
-      throw new Error('Incorrect packet length (total)');
-    }
     this.lastUpdateId = update.updateId;
     this.push(new messages.EntryUpdate(tableDefinition, update));
 

@@ -22,15 +22,13 @@ import d from 'debug';
 import {
   PeerConnection,
   PeerDirection,
-  TableDefinition,
-  EntryUpdate,
   SynchronizationType,
 } from './haproxy/peers';
 import { DataType } from './haproxy/peers/wire-types';
 
 const debug = d('manager:demo');
 
-function reconnect() {
+function connect() {
   debug('connecting');
 
   const socket = net.connect(8102, 'test-proxy');
@@ -41,19 +39,22 @@ function reconnect() {
     direction: PeerDirection.OUT,
   });
 
-  socket.on('close', () => setTimeout(reconnect, 500));
-
-  socket.on('error', (e) => {
-    debug(e);
+  socket.on('close', () => {
+    debug('socket close');
+    setTimeout(connect, 500);
   });
 
-  conn.on('tableDefinition', (def: TableDefinition) => {
-    debug(`Received table defition ${def.name}:`, def);
+  socket.on('error', (err) => {
+    debug('socker error:', err);
   });
 
-  conn.on('entryUpdate', (update: EntryUpdate, def: TableDefinition) => {
+  conn.on('tableDefinition', (def) => {
+    debug(`received table definition "${def.name}":`, def);
+  });
+
+  conn.on('entryUpdate', (update, def) => {
     debug(
-      `Received entry update in table ${def.name} for key '${
+      `received entry update for table "${def.name}", key '${
         update.key.key as string
       }':`,
       new Map(
@@ -65,7 +66,7 @@ function reconnect() {
   });
 
   conn.on('synchronizationStarted', () => {
-    debug(`Started sync`);
+    debug(`synchronization started`);
   });
 
   conn.on('synchronizationFinished', (type: SynchronizationType) => {
@@ -74,4 +75,5 @@ function reconnect() {
 
   conn.start(true);
 }
-reconnect();
+
+connect();

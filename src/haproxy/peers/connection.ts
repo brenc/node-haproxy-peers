@@ -109,12 +109,14 @@ export class PeerConnection extends EventEmitter {
       );
     }
 
-    this.parser.on('data', async (message: Message) => {
-      await this.handle(message);
+    this.parser.on('data', (message: Message) => {
+      this.handle(message);
     });
+
     this.parser.on('error', (err) => {
       this.socket.destroy(err);
     });
+
     this.socket.on('close', () => {
       if (this.heartbeatTimer) {
         debug('stopping heartbeats');
@@ -179,6 +181,7 @@ export class PeerConnection extends EventEmitter {
 
   private sendHello(): void {
     debug('sending hello');
+
     this.socket.write(
       `HAProxyS 2.1\n${this.options.peerName}\n${this.options.myName} 0 0\n`
     );
@@ -187,23 +190,29 @@ export class PeerConnection extends EventEmitter {
   private async readStatus(): Promise<string> {
     while (true) {
       const chunk = await blockingRead(this.socket);
+
       if (!chunk) {
         this.socket.destroy();
         throw new Error('Connection is dead');
       }
+
       for (const pair of chunk.entries()) {
         if (pair[1] === 0x0a) {
           this.socket.unshift(chunk.slice(pair[0] + 1));
+
           return chunk.slice(0, pair[0]).toString('utf8');
         }
       }
+
       this.socket.destroy();
+
       throw new Error('Expected to a newline within a single read');
     }
   }
 
   private sendHeartbeat(): void {
     debug('sending heartbeat');
+
     this.socket.write(
       Buffer.from([MessageClass.CONTROL, ControlMessageClass.HEARTBEAT])
     );
@@ -211,17 +220,20 @@ export class PeerConnection extends EventEmitter {
 
   private sendSychronizationRequest(): void {
     debug('sending synchronization request');
+
     this.socket.write(
       Buffer.from([
         MessageClass.CONTROL,
         ControlMessageClass.SYNCHRONIZATION_REQUEST,
       ])
     );
+
     this.emit('synchronizationStarted');
   }
 
   private sendSynchronizationConfirmed(): void {
     debug('sending synchronization confirmed');
+
     this.socket.write(
       Buffer.from([
         MessageClass.CONTROL,
@@ -234,6 +246,7 @@ export class PeerConnection extends EventEmitter {
     type: SynchronizationType = SynchronizationType.PARTIAL
   ): void {
     debug('sending %s synchronization finished', type);
+
     switch (type) {
       case SynchronizationType.PARTIAL:
         this.socket.write(
@@ -243,6 +256,7 @@ export class PeerConnection extends EventEmitter {
           ])
         );
         break;
+
       case SynchronizationType.FULL:
         this.socket.write(
           Buffer.from([
@@ -260,16 +274,18 @@ export class PeerConnection extends EventEmitter {
     const encodedTableId = VarInt.encode(tableId);
     const encodedUpdateId = Buffer.alloc(4);
     encodedUpdateId.writeUInt32BE(updateId, 0);
+
     const ack = Buffer.concat([
       Buffer.from([MessageClass.UPDATE, UpdateMessageType.ACK]),
       VarInt.encode(encodedTableId.length + 4),
       encodedTableId,
       encodedUpdateId,
     ]);
+
     this.socket.write(ack);
   }
 
-  private async handle(message: Message): Promise<void> {
+  private handle(message: Message) {
     if (message instanceof messages.Heartbeat) {
       debug('received heartbeat');
     } else if (message instanceof messages.TableDefinition) {
@@ -296,4 +312,5 @@ export class PeerConnection extends EventEmitter {
     }
   }
 }
+
 export default PeerConnection;
