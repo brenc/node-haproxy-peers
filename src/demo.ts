@@ -17,6 +17,7 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
+import Backoff from 'backo2';
 import net from 'net';
 import d from 'debug';
 import {
@@ -26,6 +27,7 @@ import {
 } from './haproxy/peers';
 import { DataType } from './haproxy/peers/wire-types';
 
+const backoff = new Backoff({ min: 1000, max: 10000 });
 const debug = d('manager:demo');
 
 function connect() {
@@ -40,12 +42,33 @@ function connect() {
   });
 
   socket.on('close', () => {
-    debug('socket close');
-    setTimeout(connect, 500);
+    debug('socket closed, reconnecting in %dms', backoff.duration());
+
+    setTimeout(() => {
+      debug('attempting reconnect...');
+      connect();
+    }, backoff.duration());
+  });
+
+  socket.on('connect', () => {
+    debug('socket connected');
+    backoff.reset();
   });
 
   socket.on('error', (err) => {
-    debug('socker error:', err);
+    debug('socker error: %o', err);
+  });
+
+  socket.on('ready', () => {
+    debug('socket ready');
+    conn
+      .start(true)
+      .then(() => {
+        debug('connection successfully started');
+      })
+      .catch((err) => {
+        debug('error starting connection: %o', err);
+      });
   });
 
   conn.on('tableDefinition', (def) => {
@@ -72,8 +95,6 @@ function connect() {
   conn.on('synchronizationFinished', (type: SynchronizationType) => {
     debug(`Finished sync ${type}`);
   });
-
-  conn.start(true);
 }
 
 connect();

@@ -21,10 +21,10 @@ import * as messages from './messages';
 import * as VarInt from './varint';
 import d from 'debug';
 import PeerParser from './protocol-parser';
-import { blockingRead } from '../../stream';
 import {
   ControlMessageClass,
   MessageClass,
+  StatusMessageCode,
   UpdateMessageType,
 } from './wire-types';
 import { Duplex } from 'stream';
@@ -132,43 +132,40 @@ export class PeerConnection extends EventEmitter {
    *
    * @param autoSynchronization Whether to send a synchronization request after performing the handshake.
    */
-  start(autoSynchronization = false): void {
+  async start(autoSynchronization = false) {
     if (this.state !== PeerConnectionState.NOT_STARTED) {
       throw new Error('A connection can only be started once');
     }
 
     switch (this.options.direction) {
       case PeerDirection.OUT:
+        // TODO: wait until the socket is ready before sending anything.
         this.sendHello();
         this.state = PeerConnectionState.AWAITING_HANDSHAKE_REPLY;
 
-        // tslint:disable-next-line: no-floating-promises
-        (async () => {
-          try {
-            const status = parseInt(await this.readStatus(), 10);
-            debug('received status %s', status);
-            if (status === 200) {
-              this.state = PeerConnectionState.ESTABLISHED;
-              this.socket.pipe(this.parser);
+        try {
+          const status = await this.readStatus();
+          debug('received status %s', status);
 
-              this.sendHeartbeat();
-              this.heartbeatTimer = setInterval(
-                () => this.sendHeartbeat(),
-                1_500
-              );
+          if (status === StatusMessageCode.HANDSHAKE_SUCCEEDED) {
+            this.state = PeerConnectionState.ESTABLISHED;
+            this.socket.pipe(this.parser);
 
-              if (autoSynchronization) {
-                this.sendSychronizationRequest();
-              }
-            } else {
-              throw new Error(`Unexpected status '${status}'.`);
+            this.sendHeartbeat();
+            this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 1500);
+
+            if (autoSynchronization) {
+              this.sendSychronizationRequest();
             }
-          } catch (err) {
-            if (err instanceof Error) {
-              this.socket.destroy(err);
-            }
+          } else {
+            throw new Error(`Unexpected status '${status}'.`);
           }
-        })();
+        } catch (err) {
+          if (err instanceof Error) {
+            this.socket.destroy(err);
+          }
+        }
+
         break;
       case PeerDirection.IN:
         throw new Error('Not yet implemented, see constructor()');
@@ -187,27 +184,64 @@ export class PeerConnection extends EventEmitter {
     );
   }
 
-  private async readStatus(): Promise<string> {
-    while (true) {
-      const chunk = await blockingRead(this.socket);
-
-      if (!chunk) {
-        this.socket.destroy();
-        throw new Error('Connection is dead');
-      }
-
-      for (const pair of chunk.entries()) {
-        if (pair[1] === 0x0a) {
-          this.socket.unshift(chunk.slice(pair[0] + 1));
-
-          return chunk.slice(0, pair[0]).toString('utf8');
+  /**
+   * Reads the connection status after a "hello" message is sent.
+   */
+  private async readStatus(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      // This will read everything in the buffer which at this point should
+      // only be the four byte status. The status is small enough such that we
+      // should be able to read it in one chunk, but technically speaking we
+      // should really loop through the buffer until it's actually empty.
+      //
+      // We're using .once('readable') to get the status only. After this
+      // the socket stream is piped into the protocol parser which handles
+      // data parsing from then on.
+      this.socket.once('readable', () => {
+        const chunks: Buffer[] = [];
+        for (;;) {
+          const chunk = this.socket.read() as Buffer;
+          if (!chunk) {
+            break;
+          }
+          chunks.push(chunk);
         }
-      }
 
-      this.socket.destroy();
+        const data = Buffer.concat(chunks);
+        if (data.length !== 4) {
+          return reject(
+            new Error(
+              `error reading status: message length should be 4 bytes, got ` +
+                `${data.length} byte(s)`
+            )
+          );
+        }
 
-      throw new Error('Expected to a newline within a single read');
-    }
+        // Converts a buffer with '200\n' -> 200.
+        const statusCode = parseInt(data.toString().slice(0, -1), 10);
+
+        switch (statusCode) {
+          case StatusMessageCode.BAD_VERSION:
+          case StatusMessageCode.HANDSHAKE_SUCCEEDED:
+          case StatusMessageCode.LOCAL_PEER_IDENTIFIER_MISMATCH:
+          case StatusMessageCode.PROTOCOL_ERROR:
+          case StatusMessageCode.REMOTE_PEER_IDENTIFIER_MISMATCH:
+          case StatusMessageCode.TRY_AGAIN_LATER:
+            resolve(statusCode);
+            break;
+
+          default:
+            reject(
+              new Error(
+                `error reading status: invalid status message code: ` +
+                  `${statusCode}`
+              )
+            );
+        }
+      });
+
+      this.socket.once('error', reject);
+    });
   }
 
   private sendHeartbeat(): void {

@@ -116,6 +116,15 @@ export function getDecodedType(dataType: DataType): DecodedType {
   }
 }
 
+export enum StatusMessageCode {
+  HANDSHAKE_SUCCEEDED = 200,
+  TRY_AGAIN_LATER = 300,
+  PROTOCOL_ERROR = 501,
+  BAD_VERSION = 502,
+  LOCAL_PEER_IDENTIFIER_MISMATCH = 503,
+  REMOTE_PEER_IDENTIFIER_MISMATCH = 504,
+}
+
 export enum TableKeyType {
   SINT = 2,
   IPv4 = 4,
