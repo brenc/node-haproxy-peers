@@ -35,7 +35,7 @@ import {
 import { EntryUpdate, TableDefinition } from './types';
 import { Message } from './messages';
 
-const debug = d('manager:haproxy:peers:connection');
+const debug = d('haproxy-peers:connection');
 
 export enum PeerDirection {
   OUT,
@@ -148,50 +148,52 @@ export class PeerConnection extends EventEmitter {
 
     const socket = net.connect(port, hostname);
 
-    socket.on('close', () => {
-      const duration = this.backoff.duration();
+    socket
+      .on('close', () => {
+        const duration = this.backoff.duration();
 
-      debug('socket closed, reconnecting in %dms', duration);
+        debug('socket closed, reconnecting in %dms', duration);
 
-      this.state = PeerConnectionState.NOT_STARTED;
+        this.state = PeerConnectionState.NOT_STARTED;
 
-      if (this.heartbeatTimer) {
-        debug('stopping heartbeatss');
-        clearInterval(this.heartbeatTimer);
-        this.heartbeatTimer = undefined;
-      }
+        if (this.heartbeatTimer) {
+          debug('stopping heartbeatss');
+          clearInterval(this.heartbeatTimer);
+          this.heartbeatTimer = undefined;
+        }
 
-      setTimeout(() => {
-        debug('attempting reconnect...');
-        this.socket = this.connect(hostname, port);
-      }, duration);
-    });
+        setTimeout(() => {
+          debug('attempting reconnect...');
+          this.socket = this.connect(hostname, port);
+        }, duration);
+      })
 
-    socket.on('connect', () => {
-      debug('socket connected');
-      this.backoff.reset();
-    });
+      .on('connect', () => {
+        debug('socket connected');
+        this.backoff.reset();
+      })
 
-    // close will be called directly after this
-    socket.on('error', (err) => {
-      debug('socket error: %o', err);
-    });
+      // close will be called directly after this
+      .on('error', (err) => {
+        debug('socket error: %o', err);
+      })
 
-    socket.on('ready', () => {
-      debug('socket ready');
+      .on('ready', () => {
+        debug('socket ready');
 
-      this.start(true)
-        .then(() => {
-          debug('connection successfully started');
-        })
-        .catch((err) => {
-          debug('error starting connection: %o', err);
-        });
-    });
+        this.start(true)
+          .then(() => {
+            debug('connection successfully started');
+          })
+          .catch((err) => {
+            debug('error starting connection: %o', err);
+          });
+      })
 
-    socket.on('timeout', () => {
-      debug('socket timeout');
-    });
+      .on('timeout', () => {
+        debug('socket timeout');
+        socket.destroy(new Error('socket timeout'));
+      });
 
     return socket;
   }
@@ -199,9 +201,11 @@ export class PeerConnection extends EventEmitter {
   /**
    * Starts peer processing on this connection.
    *
-   * Will perform the handshake, start the heartbeat timer and then pass any future data to the protocol parser.
+   * Will perform the handshake, start the heartbeat timer and then pass any
+   * future data to the protocol parser.
    *
-   * @param autoSynchronization Whether to send a synchronization request after performing the handshake.
+   * @param autoSynchronization Whether to send a synchronization request
+   * after performing the handshake.
    */
   async start(autoSynchronization = false) {
     debug('starting connection');
@@ -224,7 +228,7 @@ export class PeerConnection extends EventEmitter {
         this.socket.pipe(this.parser);
 
         this.sendHeartbeat();
-        this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 1500);
+        this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 3000);
 
         if (autoSynchronization) {
           this.sendSychronizationRequest();
@@ -420,6 +424,7 @@ export class PeerConnection extends EventEmitter {
         message.tableDefinition.senderTableId,
         message.update.updateId
       );
+
       this.emit('entryUpdate', message.update, message.tableDefinition);
     }
   }

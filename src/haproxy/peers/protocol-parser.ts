@@ -16,10 +16,11 @@
  *
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
+import d from 'debug';
+import { Transform, TransformCallback, TransformOptions } from 'stream';
 
 import * as messages from './messages';
 import * as VarInt from './varint';
-import d from 'debug';
 import {
   ControlMessageClass,
   DataType,
@@ -39,9 +40,8 @@ import {
   UnsignedInt64TableValue,
   FrequencyCounterTableValue,
 } from './types';
-import { Transform, TransformCallback, TransformOptions } from 'stream';
 
-const debug = d('manager:haproxy:peers:protocol-parser');
+const debug = d('haproxy-peers:protocol-parser');
 
 /**
  * Helper class for safe buffer handling.
@@ -164,6 +164,7 @@ export class PeerParser extends Transform {
         messages.SynchronizationConfirmed,
       ],
     ]);
+
     const messageClass = map.get(buffer[0]);
     if (!messageClass) {
       throw new Error(`Unhandled ControlMessageClass '${buffer[0]}'`);

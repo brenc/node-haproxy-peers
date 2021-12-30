@@ -26,7 +26,7 @@ import {
 } from './haproxy/peers';
 import { DataType } from './haproxy/peers/wire-types';
 
-const debug = d('manager:demo');
+const debug = d('haproxy-peers:demo');
 
 function connect() {
   debug('connecting');
