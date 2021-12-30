@@ -17,9 +17,8 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-import Backoff from 'backo2';
-import net from 'net';
 import d from 'debug';
+
 import {
   PeerConnection,
   PeerDirection,
@@ -27,74 +26,76 @@ import {
 } from './haproxy/peers';
 import { DataType } from './haproxy/peers/wire-types';
 
-const backoff = new Backoff({ min: 1000, max: 10000 });
 const debug = d('manager:demo');
 
 function connect() {
   debug('connecting');
 
-  const socket = net.connect(8102, 'test-proxy');
+  // const socket = net.connect(8102, 'test-proxy');
 
-  const conn = new PeerConnection(socket, {
+  const conn = new PeerConnection({
     myName: 'tracker',
-    peerName: 'test-proxy',
+    hostname: 'test-proxy',
+    // peerName: 'test-proxy',
+    port: 8102,
     direction: PeerDirection.OUT,
   });
 
-  socket.on('close', () => {
-    debug('socket closed, reconnecting in %dms', backoff.duration());
+  // socket.on('close', () => {
+  //   debug('socket closed, reconnecting in %dms', backoff.duration());
 
-    setTimeout(() => {
-      debug('attempting reconnect...');
-      connect();
-    }, backoff.duration());
-  });
+  //   setTimeout(() => {
+  //     debug('attempting reconnect...');
+  //     connect();
+  //   }, backoff.duration());
+  // });
 
-  socket.on('connect', () => {
-    debug('socket connected');
-    backoff.reset();
-  });
+  // socket.on('connect', () => {
+  //   debug('socket connected');
+  //   backoff.reset();
+  // });
 
-  socket.on('error', (err) => {
-    debug('socker error: %o', err);
-  });
+  // socket.on('error', (err) => {
+  //   debug('socker error: %o', err);
+  // });
 
-  socket.on('ready', () => {
-    debug('socket ready');
-    conn
-      .start(true)
-      .then(() => {
-        debug('connection successfully started');
-      })
-      .catch((err) => {
-        debug('error starting connection: %o', err);
-      });
-  });
+  // socket.on('ready', () => {
+  //   debug('socket ready');
+  //   conn
+  //     .start(true)
+  //     .then(() => {
+  //       debug('connection successfully started');
+  //     })
+  //     .catch((err) => {
+  //       debug('error starting connection: %o', err);
+  //     });
+  // });
 
-  conn.on('tableDefinition', (def) => {
-    debug(`received table definition "${def.name}":`, def);
-  });
+  conn
+    .on('tableDefinition', (def) => {
+      debug(`received table definition "${def.name}":`, def);
+    })
 
-  conn.on('entryUpdate', (update, def) => {
-    debug(
-      `received entry update for table "${def.name}", key '${
-        update.key.key as string
-      }':`,
-      new Map(
-        Array.from(update.values.entries()).map(([k, v]) => {
-          return [DataType[k], v];
-        })
-      )
-    );
-  });
+    .on('entryUpdate', (update, def) => {
+      debug(
+        `received entry update for table "${def.name}", key '${
+          update.key.key as string
+        }':`,
+        new Map(
+          Array.from(update.values.entries()).map(([k, v]) => {
+            return [DataType[k], v];
+          })
+        )
+      );
+    })
 
-  conn.on('synchronizationStarted', () => {
-    debug(`synchronization started`);
-  });
+    .on('synchronizationStarted', () => {
+      debug(`synchronization started`);
+    })
 
-  conn.on('synchronizationFinished', (type: SynchronizationType) => {
-    debug(`Finished sync ${type}`);
-  });
+    .on('synchronizationFinished', (type: SynchronizationType) => {
+      debug(`Finished sync ${type}`);
+    });
 }
 
 connect();
