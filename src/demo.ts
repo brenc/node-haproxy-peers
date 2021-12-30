@@ -19,12 +19,8 @@
 
 import d from 'debug';
 
-import {
-  PeerConnection,
-  PeerDirection,
-  SynchronizationType,
-} from './haproxy/peers';
-import { DataType } from './haproxy/peers/wire-types';
+import { PeerConnection, PeerDirection, SynchronizationType } from './';
+import { DataType } from './wire-types';
 
 const debug = d('haproxy-peers:demo');
 

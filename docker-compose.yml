@@ -29,6 +29,8 @@ services:
         - USER
       context: .
       target: development
+    environment:
+      DEBUG: haproxy-peers:*
     init: true
     #ports:
     #  - 8200:8200

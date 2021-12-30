@@ -62,13 +62,11 @@ ENV PATH /app/node_modules/.bin:$PATH
 FROM base as development
 
 RUN mkdir /app && \
-    chown ${USER}:${USER} /app
+  chown ${USER}:${USER} /app
 
 WORKDIR /app
 
 ARG NPM_TOKEN
-
-ENV DEBUG manager:*
 
 ENV NODE_ENV development
 
