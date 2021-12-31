@@ -21,7 +21,6 @@ import Backoff from 'backo2';
 import d from 'debug';
 import { EventEmitter } from 'events';
 import net from 'net';
-import util from 'util';
 
 import * as messages from './messages';
 import * as VarInt from './varint';
@@ -224,7 +223,6 @@ export class PeerConnection extends EventEmitter {
           .then(() => {
             debug('peer connection successfully started');
           })
-
           .catch((err: Error) => {
             let stack: string;
             if (err.stack) {
