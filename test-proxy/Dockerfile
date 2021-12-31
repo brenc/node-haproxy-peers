@@ -67,6 +67,6 @@ RUN \
 
 RUN useradd -r --shell /bin/bash haproxy
 
-USER haproxy
+USER ${USER}
 
 CMD ["nodemon", "--watch", "/usr/local/etc/haproxy", "-e", "lua,cfg,pem,http", "--signal", "SIGUSR1", "--exec", "haproxy", "--", "-V", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]

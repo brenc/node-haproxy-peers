@@ -18,6 +18,7 @@
  */
 
 import d from 'debug';
+import { on } from 'events';
 
 import { PeerConnection, PeerDirection, SynchronizationType } from './';
 import { DataType } from './wire-types';
@@ -27,8 +28,6 @@ const debug = d('haproxy-peers:demo');
 function connect() {
   debug('connecting');
 
-  // const socket = net.connect(8102, 'test-proxy');
-
   const conn = new PeerConnection({
     myName: 'tracker',
     hostname: 'test-proxy',
@@ -37,37 +36,11 @@ function connect() {
     direction: PeerDirection.OUT,
   });
 
-  // socket.on('close', () => {
-  //   debug('socket closed, reconnecting in %dms', backoff.duration());
-
-  //   setTimeout(() => {
-  //     debug('attempting reconnect...');
-  //     connect();
-  //   }, backoff.duration());
-  // });
-
-  // socket.on('connect', () => {
-  //   debug('socket connected');
-  //   backoff.reset();
-  // });
-
-  // socket.on('error', (err) => {
-  //   debug('socker error: %o', err);
-  // });
-
-  // socket.on('ready', () => {
-  //   debug('socket ready');
-  //   conn
-  //     .start(true)
-  //     .then(() => {
-  //       debug('connection successfully started');
-  //     })
-  //     .catch((err) => {
-  //       debug('error starting connection: %o', err);
-  //     });
-  // });
-
   conn
+    .on('error', (err) => {
+      console.error('peer connection error: %o', err);
+    })
+
     .on('tableDefinition', (def) => {
       debug(`received table definition "${def.name}":`, def);
     })

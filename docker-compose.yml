@@ -35,7 +35,6 @@ services:
     #ports:
     #  - 8200:8200
     volumes:
-      - ${PWD}/test-web/dot-npmrc:/app/.npmrc
       # Use the host's yarn cache otherwise each time you run yarn inside a
       # fresh container, it'll download all packages to the cache inside the
       # container. $USER is set by the shell and exported explicitly so it'll

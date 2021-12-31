@@ -48,6 +48,7 @@ const debug = d('haproxy-peers:protocol-parser');
  */
 class Pointer {
   private position = 0;
+
   constructor(private size: number) {}
 
   /**
@@ -128,6 +129,7 @@ export class PeerParser extends Transform {
       [MessageClass.CONTROL, (buffer) => this.tryParseControlMessage(buffer)],
       [MessageClass.UPDATE, (buffer) => this.tryParseUpdateMessage(buffer)],
     ]);
+
     const parseMethod = map.get(buffer[0]);
     if (!parseMethod) {
       throw new Error(`Unhandled MessageClass '${buffer[0]}'.`);
@@ -137,6 +139,7 @@ export class PeerParser extends Transform {
     if (consumed !== null) {
       return 1 + consumed;
     }
+
     return null;
   }
 

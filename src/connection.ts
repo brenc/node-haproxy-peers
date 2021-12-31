@@ -19,9 +19,9 @@
 
 import Backoff from 'backo2';
 import d from 'debug';
-import { Duplex } from 'stream';
 import { EventEmitter } from 'events';
 import net from 'net';
+import util from 'util';
 
 import * as messages from './messages';
 import * as VarInt from './varint';
@@ -65,6 +65,8 @@ enum PeerConnectionState {
 }
 
 export interface PeerConnection {
+  emit(event: 'error', err: Error): boolean;
+
   emit(
     event: 'entryUpdate',
     entry: EntryUpdate,
@@ -76,6 +78,8 @@ export interface PeerConnection {
   emit(event: 'synchronizationStarted'): boolean;
 
   emit(event: 'tableDefinition', tableDefinition: TableDefinition): boolean;
+
+  on(event: 'error', listener: (err: Error) => void): this;
 
   on(
     event: 'entryUpdate',
@@ -115,8 +119,8 @@ export interface PeerConnection {
 export class PeerConnection extends EventEmitter {
   private backoff: Backoff;
   private heartbeatTimer?: NodeJS.Timeout;
-  private parser: PeerParser = new PeerParser();
-  private socket: Duplex;
+  private parser: PeerParser = this.createParser();
+  private socket: net.Socket;
   private state: PeerConnectionState = PeerConnectionState.NOT_STARTED;
 
   constructor(private options: PeerConnectionOptions) {
@@ -130,17 +134,43 @@ export class PeerConnection extends EventEmitter {
       throw new Error('only outgoing connections are supported');
     }
 
-    this.parser.on('data', (message: Message) => {
-      this.onParserMessage(message);
-    });
-
-    this.parser.on('error', (err) => {
-      this.socket.destroy(err);
-    });
-
     this.backoff = new Backoff({ min: 1000, max: 10000 });
 
     this.socket = this.connect(options.hostname, options.port);
+
+    // setInterval(() => {
+    //   debug('READY STATE: %s', this.socket.readyState);
+    //   debug('IS PAUSED:', this.socket.isPaused(), this.parser.isPaused());
+    // }, 1000);
+  }
+
+  private createParser(): PeerParser {
+    const parser = new PeerParser();
+
+    parser
+      .on('close', () => {
+        debug('parser closed');
+      })
+
+      .on('data', (message: Message) => {
+        debug('parser message');
+        this.onParserMessage(message);
+      })
+
+      .on('end', () => {
+        debug('parser ended');
+      })
+
+      .on('error', (err) => {
+        debug('parser error: %o', err);
+        this.socket.destroy(err);
+      })
+
+      .on('resume', () => {
+        debug('parser resumed');
+      });
+
+    return parser;
   }
 
   private connect(hostname: string, port: number) {
@@ -154,23 +184,32 @@ export class PeerConnection extends EventEmitter {
 
         debug('socket closed, reconnecting in %dms', duration);
 
-        this.state = PeerConnectionState.NOT_STARTED;
-
         if (this.heartbeatTimer) {
-          debug('stopping heartbeatss');
+          debug('stopping heartbeats');
           clearInterval(this.heartbeatTimer);
           this.heartbeatTimer = undefined;
         }
 
         setTimeout(() => {
-          debug('attempting reconnect...');
+          debug('attempting reconnect');
+
+          this.socket.destroy();
+          this.socket.unpipe();
+
+          this.state = PeerConnectionState.NOT_STARTED;
+
+          // The old parser gets ended and there doesn't appear to be a way to
+          // re-use it, so we create a new one.
+          this.parser = this.createParser();
+
           this.socket = this.connect(hostname, port);
         }, duration);
       })
 
       .on('connect', () => {
         debug('socket connected');
-        this.backoff.reset();
+        // TODO: this resets too fast.
+        // this.backoff.reset();
       })
 
       // close will be called directly after this
@@ -183,15 +222,27 @@ export class PeerConnection extends EventEmitter {
 
         this.start(true)
           .then(() => {
-            debug('connection successfully started');
+            debug('peer connection successfully started');
           })
-          .catch((err) => {
-            debug('error starting connection: %o', err);
+
+          .catch((err: Error) => {
+            let stack: string;
+            if (err.stack) {
+              stack = err.stack;
+            } else {
+              stack = '[no stack]';
+            }
+
+            this.emit(
+              'error',
+              new Error(`error starting peer connection: ${stack}`)
+            );
           });
       })
 
       .on('timeout', () => {
         debug('socket timeout');
+        // This isn't done automatically.
         socket.destroy(new Error('socket timeout'));
       });
 
@@ -211,7 +262,7 @@ export class PeerConnection extends EventEmitter {
     debug('starting connection');
 
     if (this.state !== PeerConnectionState.NOT_STARTED) {
-      throw new Error('a connection can only be started once');
+      throw new Error('a peer connection can only be started once');
     }
 
     this.sendHello();
@@ -220,27 +271,38 @@ export class PeerConnection extends EventEmitter {
     try {
       const status = await this.readStatus();
 
-      debug('read status %d', status);
-
       if (status === StatusMessageCode.HANDSHAKE_SUCCEEDED) {
-        this.state = PeerConnectionState.ESTABLISHED;
-
+        // From here on out, the parser handles the data stream.
         this.socket.pipe(this.parser);
 
-        this.sendHeartbeat();
+        this.state = PeerConnectionState.ESTABLISHED;
+
         this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 3000);
 
         if (autoSynchronization) {
           this.sendSychronizationRequest();
         }
       } else {
-        throw new Error(`unexpected status ${status}`);
+        throw new Error(`got an unexpected status: ${status}`);
       }
     } catch (err) {
-      if (err instanceof Error) {
-        this.socket.destroy(err);
-      }
+      this.socket.destroy();
+      throw err;
     }
+  }
+
+  start2() {
+    debug('starting connection');
+
+    if (this.state !== PeerConnectionState.NOT_STARTED) {
+      throw new Error('a peer connection can only be started once');
+    }
+
+    this.socket.pipe(this.parser);
+
+    this.sendHello();
+
+    this.state = PeerConnectionState.AWAITING_HANDSHAKE_REPLY;
   }
 
   requestSynchronization(): void {
@@ -263,35 +325,23 @@ export class PeerConnection extends EventEmitter {
   private async readStatus(): Promise<number> {
     debug('reading status');
 
+    // This is written like this so we can convert the event based interface
+    // of a socket/stream into a promise.
     return new Promise((resolve, reject) => {
-      // This will read everything in the buffer which at this point should
-      // only be the four byte status. The status is small enough such that we
-      // should be able to read it in one chunk, but technically speaking we
-      // should really loop through the buffer until it's actually empty.
-      //
+      // Only get the first four bytes, which should be the numeric status
+      // plus a newline (e.g. '200\n').
       // We're using .once('readable') to get the status only. After this
       // the socket stream is piped into the protocol parser which handles
       // message parsing from then on.
       this.socket.once('readable', () => {
-        const chunks: Buffer[] = [];
-        for (;;) {
-          const chunk = this.socket.read() as Buffer;
-          if (!chunk) {
-            break;
-          }
-          chunks.push(chunk);
-        }
+        const chunk = this.socket.read(4) as Buffer;
 
-        debug('got %d data chunk(s)', chunks.length);
+        debug('status chunk: %o', chunk.toString());
 
-        // Only pull out the first three bytes, which should be the status
-        // code. This excludes the newline and any extraneous bytes that
-        // sometimes get sent for some unknown reason. Then convert to an int.
-        // e.g. '200\n\x00\x00' -> 200
-        const statusCode = parseInt(
-          Buffer.concat(chunks).slice(0, 3).toString(),
-          10
-        );
+        // Only pull out the first three bytes which should be the status
+        // code excluding the newline, then convert to an int.
+        // e.g. '200\n' -> 200
+        const statusCode = parseInt(chunk.slice(0, 3).toString(), 10);
 
         debug('got status code %d', statusCode);
 
