@@ -120,14 +120,14 @@ export class PeerParser extends Transform {
    *
    * @param buffer
    */
-  private tryParse(buffer: Buffer): number | null {
+  private parseMessage(buffer: Buffer): number | null {
     if (buffer.length < 1) {
       return null;
     }
 
     const map = new Map<MessageClass, (buffer: Buffer) => number | null>([
-      [MessageClass.CONTROL, (buffer) => this.tryParseControlMessage(buffer)],
-      [MessageClass.UPDATE, (buffer) => this.tryParseUpdateMessage(buffer)],
+      [MessageClass.CONTROL, (buffer) => this.parseControlMessage(buffer)],
+      [MessageClass.UPDATE, (buffer) => this.parseUpdateMessage(buffer)],
     ]);
 
     const parseMethod = map.get(buffer[0]);
@@ -143,7 +143,7 @@ export class PeerParser extends Transform {
     return null;
   }
 
-  private tryParseControlMessage(buffer: Buffer): number | null {
+  private parseControlMessage(buffer: Buffer): number | null {
     if (buffer.length < 1) {
       return null;
     }
@@ -177,14 +177,14 @@ export class PeerParser extends Transform {
     return 1;
   }
 
-  private tryParseUpdateMessage(buffer: Buffer): number | null {
+  private parseUpdateMessage(buffer: Buffer): number | null {
     if (buffer.length < 1) {
       return null;
     }
 
     switch (buffer[0] as UpdateMessageType) {
       case UpdateMessageType.STICK_TABLE_DEFINITION: {
-        const consumed = this.tryParseTableDefinition(buffer.slice(1));
+        const consumed = this.parseTableDefinition(buffer.slice(1));
         if (consumed !== null) {
           return 1 + consumed;
         }
@@ -206,7 +206,7 @@ export class PeerParser extends Transform {
         const timed =
           buffer[0] === UpdateMessageType.ENTRY_UPDATE_TIMED ||
           buffer[0] === UpdateMessageType.INCREMENTAL_ENTRY_UPDATE_TIMED;
-        const consumed = this.tryParseEntryUpdate(buffer.slice(1), {
+        const consumed = this.parseEntryUpdate(buffer.slice(1), {
           incremental,
           timed,
         });
@@ -228,7 +228,7 @@ export class PeerParser extends Transform {
    *
    * @param buffer
    */
-  private tryParseTableDefinition(buffer: Buffer): number | null {
+  private parseTableDefinition(buffer: Buffer): number | null {
     debug('attempting to parse table definition');
 
     let length: number,
@@ -341,7 +341,7 @@ export class PeerParser extends Transform {
    * @param buffer
    * @param isTimed
    */
-  private tryParseEntryUpdate(
+  private parseEntryUpdate(
     buffer: Buffer,
     options: {
       timed: boolean;
@@ -533,18 +533,30 @@ export class PeerParser extends Transform {
     try {
       let pointer = 0;
       for (;;) {
-        const consumed = this.tryParse(this.buffer.slice(pointer));
+        const consumed = this.parseMessage(this.buffer.slice(pointer));
+
         if (consumed === null) {
           break;
         }
+
         pointer += consumed;
       }
+
       this.buffer = Buffer.from(this.buffer.slice(pointer));
+
       callback();
     } catch (err) {
-      // XXX is this correct?
+      const errorMessage = 'error parsing message';
       if (err instanceof Error) {
-        callback(err);
+        let stack = '';
+        if (err.stack) {
+          stack = err.stack;
+        }
+        callback(new Error(`${errorMessage}: ${stack}`));
+      } else if (typeof err === 'string') {
+        callback(new Error(`${errorMessage}: ${err}`));
+      } else {
+        callback(new Error(errorMessage));
       }
     }
   }

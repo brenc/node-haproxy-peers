@@ -43,7 +43,7 @@ export enum PeerDirection {
 
 // TODO: add backoff options.
 export interface PeerConnectionOptions {
-  direction: PeerDirection;
+  direction?: PeerDirection;
   hostname: string;
   myName: string;
   peerName?: string;
@@ -129,6 +129,10 @@ export class PeerConnection extends EventEmitter {
       options.peerName = options.hostname;
     }
 
+    if (!options.direction) {
+      options.direction = PeerDirection.OUT;
+    }
+
     if (options.direction !== PeerDirection.OUT) {
       throw new Error('only outgoing connections are supported');
     }
@@ -152,7 +156,6 @@ export class PeerConnection extends EventEmitter {
       })
 
       .on('data', (message: Message) => {
-        debug('parser message');
         this.onParserMessage(message);
       })
 
@@ -161,8 +164,14 @@ export class PeerConnection extends EventEmitter {
       })
 
       .on('error', (err) => {
-        debug('parser error: %o', err);
-        this.socket.destroy(err);
+        let stack = '';
+        if (err.stack) {
+          stack = err.stack;
+        }
+
+        this.socket.destroy();
+
+        this.emit('error', new Error(`parser error: ${stack}`));
       })
 
       .on('resume', () => {
@@ -213,7 +222,11 @@ export class PeerConnection extends EventEmitter {
 
       // close will be called directly after this
       .on('error', (err) => {
-        debug('socket error: %o', err);
+        let stack = '';
+        if (err.stack) {
+          stack = err.stack;
+        }
+        this.emit('error', new Error(`socket error: ${stack}`));
       })
 
       .on('ready', () => {
@@ -224,13 +237,10 @@ export class PeerConnection extends EventEmitter {
             debug('peer connection successfully started');
           })
           .catch((err: Error) => {
-            let stack: string;
+            let stack = '';
             if (err.stack) {
               stack = err.stack;
-            } else {
-              stack = '[no stack]';
             }
-
             this.emit(
               'error',
               new Error(`error starting peer connection: ${stack}`)
@@ -281,6 +291,7 @@ export class PeerConnection extends EventEmitter {
           this.sendSychronizationRequest();
         }
       } else {
+        // TODO: throw specific errors per status code.
         throw new Error(`got an unexpected status: ${status}`);
       }
     } catch (err) {

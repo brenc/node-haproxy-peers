@@ -19,7 +19,7 @@
 
 import d from 'debug';
 
-import { PeerConnection, PeerDirection, SynchronizationType } from './';
+import { PeerConnection, SynchronizationType } from './';
 import { DataType } from './wire-types';
 
 const debug = d('haproxy-peers:demo');
@@ -32,12 +32,12 @@ function connect() {
     hostname: 'test-proxy',
     // peerName: 'test-proxy',
     port: 8102,
-    direction: PeerDirection.OUT,
+    // direction: PeerDirection.OUT,
   });
 
   conn
     .on('error', (err) => {
-      console.error('peer connection error: %o', err);
+      console.error('peer connection error: %s', err.stack);
     })
 
     .on('tableDefinition', (def) => {
