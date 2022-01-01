@@ -16,8 +16,9 @@
  *
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
-import d from 'debug';
 import { Transform, TransformCallback, TransformOptions } from 'stream';
+import { inet_ntop } from 'inet_xtoy';
+import d from 'debug';
 
 import * as messages from './messages';
 import * as VarInt from './varint';
@@ -39,6 +40,8 @@ import {
   UnsignedInt32TableValue,
   UnsignedInt64TableValue,
   FrequencyCounterTableValue,
+  IPv6TableKey,
+  IPv4TableKey,
 } from './types';
 
 const debug = d('haproxy-peers:protocol-parser');
@@ -418,7 +421,25 @@ export class PeerParser extends Transform {
 
         break;
 
-      // TODO: support ipv4/6 key types.
+      case TableKeyType.IPv6: {
+        const keyLen = tableDefinition.keyLen;
+
+        key = new IPv6TableKey(inet_ntop(pointer.sliceBuffer(buffer, keyLen)));
+
+        pointer.consume(keyLen, 'incorrect packet length (key)');
+
+        break;
+      }
+
+      case TableKeyType.IPv4: {
+        const keyLen = tableDefinition.keyLen;
+
+        key = new IPv4TableKey(inet_ntop(pointer.sliceBuffer(buffer, keyLen)));
+
+        pointer.consume(keyLen, 'incorrect packet length (key)');
+
+        break;
+      }
 
       default:
         throw new Error(

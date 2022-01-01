@@ -45,6 +45,22 @@ export class StringTableKey extends TableKey<string> {
   }
 }
 
+export class IPv6TableKey extends TableKey<string> {
+  readonly type = TableKeyType.IPv6;
+
+  constructor(public readonly key: string) {
+    super();
+  }
+}
+
+export class IPv4TableKey extends TableKey<string> {
+  readonly type = TableKeyType.IPv4;
+
+  constructor(public readonly key: string) {
+    super();
+  }
+}
+
 export abstract class TableValue<T> {
   abstract readonly type: DecodedType;
   abstract readonly value: T;
