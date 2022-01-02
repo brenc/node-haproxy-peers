@@ -147,40 +147,6 @@ export class PeerConnection extends EventEmitter {
     // }, 1000);
   }
 
-  private createParser(): PeerParser {
-    const parser = new PeerParser();
-
-    parser
-      .on('close', () => {
-        debug('parser closed');
-      })
-
-      .on('data', (message: Message) => {
-        this.onParserMessage(message);
-      })
-
-      .on('end', () => {
-        debug('parser ended');
-      })
-
-      .on('error', (err) => {
-        let stack = '';
-        if (err.stack) {
-          stack = err.stack;
-        }
-
-        this.socket.destroy();
-
-        this.emit('error', new Error(`parser error: ${stack}`));
-      })
-
-      .on('resume', () => {
-        debug('parser resumed');
-      });
-
-    return parser;
-  }
-
   private connect(hostname: string, port: number) {
     debug('connecting to %s:%s', hostname, port);
 
@@ -257,6 +223,51 @@ export class PeerConnection extends EventEmitter {
     return socket;
   }
 
+  private createParser(): PeerParser {
+    const parser = new PeerParser();
+
+    parser
+      .on('close', () => {
+        debug('parser closed');
+      })
+
+      .on('data', (message: Message) => {
+        this.onParserMessage(message);
+      })
+
+      .on('end', () => {
+        debug('parser ended');
+      })
+
+      .on('error', (err) => {
+        let stack = '';
+        if (err.stack) {
+          stack = err.stack;
+        }
+
+        this.socket.destroy();
+
+        this.emit('error', new Error(`parser error: ${stack}`));
+      })
+
+      .on('resume', () => {
+        debug('parser resumed');
+      });
+
+    return parser;
+  }
+
+  /**
+   * Heartbeats only need to be sent during periods of complete inactivity.
+   */
+  private resetHeartbeatTimer() {
+    if (this.heartbeatTimer) {
+      debug('resetting heartbeat timer');
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 3000);
+    }
+  }
+
   /**
    * Starts peer processing on this connection.
    *
@@ -288,7 +299,7 @@ export class PeerConnection extends EventEmitter {
         this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 3000);
 
         if (autoSynchronization) {
-          this.sendSychronizationRequest();
+          this.sendSynchronizationRequest();
         }
       } else {
         // TODO: throw specific errors per status code.
@@ -312,10 +323,6 @@ export class PeerConnection extends EventEmitter {
     this.sendHello();
 
     this.state = PeerConnectionState.AWAITING_HANDSHAKE_REPLY;
-  }
-
-  requestSynchronization(): void {
-    this.sendSychronizationRequest();
   }
 
   private sendHello(): void {
@@ -386,7 +393,7 @@ export class PeerConnection extends EventEmitter {
     );
   }
 
-  private sendSychronizationRequest(): void {
+  private sendSynchronizationRequest(): void {
     debug('sending synchronization request');
 
     this.socket.write(
@@ -395,6 +402,8 @@ export class PeerConnection extends EventEmitter {
         ControlMessageClass.SYNCHRONIZATION_REQUEST,
       ])
     );
+
+    this.resetHeartbeatTimer();
 
     this.emit('synchronizationStarted');
   }
@@ -408,6 +417,8 @@ export class PeerConnection extends EventEmitter {
         ControlMessageClass.SYNCHRONIZATION_CONFIRMED,
       ])
     );
+
+    this.resetHeartbeatTimer();
   }
 
   private sendSynchronizationFinished(
@@ -434,6 +445,8 @@ export class PeerConnection extends EventEmitter {
         );
         break;
     }
+
+    this.resetHeartbeatTimer();
   }
 
   private sendAck(tableId: number, updateId: number): void {
@@ -449,6 +462,8 @@ export class PeerConnection extends EventEmitter {
       encodedTableId,
       encodedUpdateId,
     ]);
+
+    this.resetHeartbeatTimer();
 
     this.socket.write(ack);
   }

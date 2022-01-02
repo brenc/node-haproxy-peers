@@ -137,7 +137,7 @@ export class PeerParser extends Transform {
 
     const parseMethod = map.get(buffer[0]);
     if (!parseMethod) {
-      throw new Error(`Unhandled MessageClass '${buffer[0]}'.`);
+      throw new Error(`unhandled MessageClass '${buffer[0]}'.`);
     }
 
     const consumed = parseMethod(buffer.slice(1));
@@ -175,7 +175,7 @@ export class PeerParser extends Transform {
 
     const messageClass = map.get(buffer[0]);
     if (!messageClass) {
-      throw new Error(`Unhandled ControlMessageClass '${buffer[0]}'`);
+      throw new Error(`unhandled ControlMessageClass '${buffer[0]}'`);
     }
 
     this.push(new messageClass());
@@ -571,7 +571,7 @@ export class PeerParser extends Transform {
     }
 
     if (!pointer.isEmpty()) {
-      throw new Error('Incorrect packet length (total)');
+      throw new Error('incorrect packet length (total)');
     }
 
     const update = {
@@ -582,6 +582,7 @@ export class PeerParser extends Transform {
     };
 
     this.lastUpdateId = update.updateId;
+
     this.push(new messages.EntryUpdate(tableDefinition, update));
 
     return pointer.get();
