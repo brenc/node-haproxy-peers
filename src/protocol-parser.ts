@@ -42,6 +42,8 @@ import {
   FrequencyCounterTableValue,
   IPv6TableKey,
   IPv4TableKey,
+  BinaryTableKey,
+  SignedInt32TableValue,
 } from './types';
 
 const debug = d('haproxy-peers:protocol-parser');
@@ -353,15 +355,17 @@ export class PeerParser extends Transform {
   ): number | null {
     debug('attempting to parse entry update %o', options);
 
+    // The table definition should always be sent before any update message.
     const tableDefinition = this.lastTableDefinition;
     if (tableDefinition === undefined) {
       throw new Error(
-        'Unable to parse entry update without a stick table definition.'
+        'unable to parse entry update without a stick table definition'
       );
     }
+
     if (options.incremental && this.lastUpdateId === undefined) {
       throw new Error(
-        'Unable to parse incremental entry update without an old update.'
+        'unable to parse incremental entry update without a previous update'
       );
     }
 
@@ -375,6 +379,7 @@ export class PeerParser extends Transform {
 
     const pointer = new Pointer(consumed + length);
     pointer.consume(consumed);
+
     length += consumed;
     if (buffer.length < length) {
       return null;
@@ -383,50 +388,62 @@ export class PeerParser extends Transform {
     if (options.incremental) {
       updateId = this.lastUpdateId + 1;
     } else {
-      pointer.assert(4, 'Insufficient data (updateId)');
+      pointer.assert(4, 'insufficient data (updateId)');
+
       updateId = buffer.readUInt32BE(pointer.get());
-      pointer.consume(4, 'Incorrect packet length (updateId)');
+
+      pointer.consume(4, 'incorrect packet length (updateId)');
     }
 
     if (options.timed) {
-      pointer.assert(4, 'Insufficient data (expiry)');
+      pointer.assert(4, 'insufficient data (expiry)');
+
       expiry = buffer.readUInt32BE(pointer.get());
-      pointer.consume(4, 'Incorrect packet length (expiry)');
+
+      pointer.consume(4, 'incorrect packet length (expiry)');
     }
 
     switch (tableDefinition.keyType) {
+      case TableKeyType.BINARY: {
+        const keyLen = tableDefinition.keyLen;
+
+        pointer.assert(keyLen, 'insufficient data (key)');
+
+        // HAProxy shows this as hex when you dump the table so that's what
+        // we're doing here.
+        key = new BinaryTableKey(
+          pointer.sliceBuffer(buffer, keyLen).toString('hex')
+        );
+
+        pointer.consume(keyLen, 'incorrect packet length (key)');
+
+        break;
+      }
+
       case TableKeyType.STRING: {
+        // Key length is included in the message for string key types.
         let keyLen;
         [consumed, keyLen] = VarInt.decode(pointer.sliceBuffer(buffer));
 
-        pointer.consume(consumed, 'Incorrect packet length (keyLen)');
+        pointer.consume(consumed, 'incorrect packet length (keyLen)');
 
-        pointer.assert(keyLen, 'Insufficient data (key)');
+        pointer.assert(keyLen, 'insufficient data (key)');
 
         key = new StringTableKey(
           pointer.sliceBuffer(buffer, keyLen).toString('binary')
         );
 
-        pointer.consume(keyLen, 'Incorrect packet length (key)');
+        pointer.consume(keyLen, 'incorrect packet length (key)');
 
         break;
       }
 
-      case TableKeyType.SINT:
-        pointer.assert(4, 'Insufficient data (key)');
+      case TableKeyType.SINT: {
+        pointer.assert(4, 'insufficient data (key)');
 
         key = new SignedInt32TableKey(buffer.readInt32BE(pointer.get()));
 
-        pointer.consume(4, 'Incorrect packet length (key)');
-
-        break;
-
-      case TableKeyType.IPv6: {
-        const keyLen = tableDefinition.keyLen;
-
-        key = new IPv6TableKey(inet_ntop(pointer.sliceBuffer(buffer, keyLen)));
-
-        pointer.consume(keyLen, 'incorrect packet length (key)');
+        pointer.consume(4, 'incorrect packet length (key)');
 
         break;
       }
@@ -434,6 +451,10 @@ export class PeerParser extends Transform {
       case TableKeyType.IPv4: {
         const keyLen = tableDefinition.keyLen;
 
+        pointer.assert(keyLen, 'insufficient data (key)');
+
+        // This is stored in "binary network format" so it must be converted
+        // back to a string.
         key = new IPv4TableKey(inet_ntop(pointer.sliceBuffer(buffer, keyLen)));
 
         pointer.consume(keyLen, 'incorrect packet length (key)');
@@ -441,10 +462,25 @@ export class PeerParser extends Transform {
         break;
       }
 
-      default:
+      case TableKeyType.IPv6: {
+        const keyLen = tableDefinition.keyLen;
+
+        pointer.assert(keyLen, 'insufficient data (key)');
+
+        // This is stored in "binary network format" so it must be converted
+        // back to a string.
+        key = new IPv6TableKey(inet_ntop(pointer.sliceBuffer(buffer, keyLen)));
+
+        pointer.consume(keyLen, 'incorrect packet length (key)');
+
+        break;
+      }
+
+      default: {
         throw new Error(
-          `Unable to handle key type '${tableDefinition.keyType}'.`
+          `Unable to handle key type '${tableDefinition.keyType as string}'.`
         );
+      }
     }
 
     const values: Map<DataType, TableValue<unknown>> = new Map();
@@ -466,6 +502,11 @@ export class PeerParser extends Transform {
       debug('decoded int:', decodedInt);
 
       switch (getDecodedType(dataType)) {
+        case DecodedType.SINT: {
+          values.set(dataType, new SignedInt32TableValue(decodedInt));
+          break;
+        }
+
         case DecodedType.UINT: {
           values.set(dataType, new UnsignedInt32TableValue(decodedInt));
           break;
@@ -521,10 +562,11 @@ export class PeerParser extends Transform {
           break;
         }
 
-        default:
+        default: {
           throw new Error(
-            `Unable to handle decoded data type '${getDecodedType(dataType)}'.`
+            `unable to handle decoded data type ${getDecodedType(dataType)}`
           );
+        }
       }
     }
 

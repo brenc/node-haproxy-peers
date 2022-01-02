@@ -45,6 +45,14 @@ export class StringTableKey extends TableKey<string> {
   }
 }
 
+export class BinaryTableKey extends TableKey<string> {
+  readonly type = TableKeyType.BINARY;
+
+  constructor(public readonly key: string) {
+    super();
+  }
+}
+
 export class IPv6TableKey extends TableKey<string> {
   readonly type = TableKeyType.IPv6;
 
