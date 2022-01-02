@@ -67,8 +67,11 @@ export enum DataType {
 }
 
 export enum DecodedType {
+  // Signed integer.
   SINT,
+  // Unsigned integer.
   UINT,
+  // Unsigned long.
   ULONGLONG,
   FREQUENCY_COUNTER,
   DICTIONARY,

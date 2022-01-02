@@ -167,9 +167,6 @@ export class PeerConnection extends EventEmitter {
         setTimeout(() => {
           debug('attempting reconnect');
 
-          this.socket.destroy();
-          this.socket.unpipe();
-
           this.state = PeerConnectionState.NOT_STARTED;
 
           // The old parser gets ended and there doesn't appear to be a way to
@@ -182,8 +179,6 @@ export class PeerConnection extends EventEmitter {
 
       .on('connect', () => {
         debug('socket connected');
-        // TODO: this resets too fast.
-        // this.backoff.reset();
       })
 
       // close will be called directly after this
@@ -261,11 +256,12 @@ export class PeerConnection extends EventEmitter {
    * Heartbeats only need to be sent during periods of complete inactivity.
    */
   private resetHeartbeatTimer() {
-    if (this.heartbeatTimer) {
-      debug('resetting heartbeat timer');
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 3000);
+    if (!this.heartbeatTimer) {
+      return;
     }
+    debug('resetting heartbeat timer');
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => this.sendHeartbeat(), 3000);
   }
 
   /**
@@ -309,20 +305,6 @@ export class PeerConnection extends EventEmitter {
       this.socket.destroy();
       throw err;
     }
-  }
-
-  start2() {
-    debug('starting connection');
-
-    if (this.state !== PeerConnectionState.NOT_STARTED) {
-      throw new Error('a peer connection can only be started once');
-    }
-
-    this.socket.pipe(this.parser);
-
-    this.sendHello();
-
-    this.state = PeerConnectionState.AWAITING_HANDSHAKE_REPLY;
   }
 
   private sendHello(): void {

@@ -179,6 +179,7 @@ export class PeerParser extends Transform {
     }
 
     this.push(new messageClass());
+
     return 1;
   }
 
@@ -195,6 +196,7 @@ export class PeerParser extends Transform {
         }
         return null;
       }
+
       case UpdateMessageType.ENTRY_UPDATE:
       case UpdateMessageType.ENTRY_UPDATE_TIMED:
       case UpdateMessageType.INCREMENTAL_ENTRY_UPDATE:
@@ -215,13 +217,17 @@ export class PeerParser extends Transform {
           incremental,
           timed,
         });
+
         if (consumed !== null) {
           return 1 + consumed;
         }
+
         return null;
       }
-      default:
-        throw new Error(`Unhandled UpdateMessageType '${buffer[0]}'`);
+
+      default: {
+        throw new Error(`unhandled UpdateMessageType '${buffer[0]}'`);
+      }
     }
   }
 
