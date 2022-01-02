@@ -140,11 +140,6 @@ export class PeerConnection extends EventEmitter {
     this.backoff = new Backoff({ min: 1000, max: 10000 });
 
     this.socket = this.connect(options.hostname, options.port);
-
-    // setInterval(() => {
-    //   debug('READY STATE: %s', this.socket.readyState);
-    //   debug('IS PAUSED:', this.socket.isPaused(), this.parser.isPaused());
-    // }, 1000);
   }
 
   private connect(hostname: string, port: number) {
@@ -170,7 +165,7 @@ export class PeerConnection extends EventEmitter {
           this.state = PeerConnectionState.NOT_STARTED;
 
           // The old parser gets ended and there doesn't appear to be a way to
-          // re-use it, so we create a new one.
+          // re-use it, so we need to create a new one.
           this.parser = this.createParser();
 
           this.socket = this.connect(hostname, port);

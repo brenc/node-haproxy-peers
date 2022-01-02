@@ -436,7 +436,7 @@ export class PeerParser extends Transform {
         pointer.assert(keyLen, 'insufficient data (key)');
 
         key = new StringTableKey(
-          pointer.sliceBuffer(buffer, keyLen).toString('binary')
+          pointer.sliceBuffer(buffer, keyLen).toString()
         );
 
         pointer.consume(keyLen, 'incorrect packet length (key)');
