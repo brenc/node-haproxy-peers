@@ -321,20 +321,29 @@ export class PeerConnection extends EventEmitter {
     // This is written like this so we can convert the event based interface
     // of a socket/stream into a promise.
     return new Promise((resolve, reject) => {
-      // Only get the first four bytes, which should be the numeric status
-      // plus a newline (e.g. '200\n').
+      // We have to read each byte individually until we reach a line feed.
+      // This signals the end of the status message.
+      //
       // We're using .once('readable') to get the status only. After this
       // the socket stream is piped into the protocol parser which handles
       // message parsing from then on.
       this.socket.once('readable', () => {
-        const chunk = this.socket.read(4) as Buffer;
+        const chunks: Buffer[] = [];
+        for (;;) {
+          const chunk = this.socket.read(1) as Buffer;
 
-        debug('status chunk: %o', chunk.toString());
+          if (!chunk) {
+            throw new Error('error reading status');
+          }
 
-        // Only pull out the first three bytes which should be the status
-        // code excluding the newline, then convert to an int.
-        // e.g. '200\n' -> 200
-        const statusCode = parseInt(chunk.slice(0, 3).toString(), 10);
+          if (chunk.toString() === '\n') {
+            break;
+          } else {
+            chunks.push(chunk);
+          }
+        }
+
+        const statusCode = parseInt(Buffer.concat(chunks).toString(), 10);
 
         debug('got status code %d', statusCode);
 
@@ -348,13 +357,14 @@ export class PeerConnection extends EventEmitter {
             resolve(statusCode);
             break;
 
-          default:
+          default: {
             reject(
               new Error(
                 `error reading status: invalid status message code: ` +
                   `${statusCode}`
               )
             );
+          }
         }
       });
 
