@@ -18,7 +18,6 @@
  */
 
 import d from 'debug';
-
 import { PeerConnection, SynchronizationType } from './';
 import { DataType } from './wire-types';
 

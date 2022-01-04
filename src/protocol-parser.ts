@@ -16,11 +16,24 @@
  *
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
-import { Transform, TransformCallback, TransformOptions } from 'stream';
-import { inet_ntop } from 'inet_xtoy';
 import d from 'debug';
-
+import { inet_ntop } from 'inet_xtoy';
+import { Transform, TransformCallback, TransformOptions } from 'stream';
 import * as messages from './messages';
+import {
+  BinaryTableKey,
+  FrequencyCounterTableValue,
+  IPv4TableKey,
+  IPv6TableKey,
+  SignedInt32TableKey,
+  SignedInt32TableValue,
+  StringTableKey,
+  TableDefinition,
+  TableKey,
+  TableValue,
+  UnsignedInt32TableValue,
+  UnsignedInt64TableValue,
+} from './types';
 import * as VarInt from './varint';
 import {
   ControlMessageClass,
@@ -31,20 +44,6 @@ import {
   TableKeyType,
   UpdateMessageType,
 } from './wire-types';
-import {
-  SignedInt32TableKey,
-  StringTableKey,
-  TableDefinition,
-  TableKey,
-  TableValue,
-  UnsignedInt32TableValue,
-  UnsignedInt64TableValue,
-  FrequencyCounterTableValue,
-  IPv6TableKey,
-  IPv4TableKey,
-  BinaryTableKey,
-  SignedInt32TableValue,
-} from './types';
 
 const debug = d('haproxy-peers:protocol-parser');
 

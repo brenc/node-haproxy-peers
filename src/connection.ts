@@ -21,18 +21,17 @@ import Backoff from 'backo2';
 import d from 'debug';
 import { EventEmitter } from 'events';
 import net from 'net';
-
 import * as messages from './messages';
-import * as VarInt from './varint';
+import { Message } from './messages';
 import PeerParser from './protocol-parser';
+import { EntryUpdate, TableDefinition } from './types';
+import * as VarInt from './varint';
 import {
   ControlMessageClass,
   MessageClass,
   StatusMessageCode,
   UpdateMessageType,
 } from './wire-types';
-import { EntryUpdate, TableDefinition } from './types';
-import { Message } from './messages';
 
 const debug = d('haproxy-peers:connection');
 

@@ -18,10 +18,10 @@
  */
 
 import {
-  TableKeyType,
   DataType,
   DecodedType,
   FrequencyCounter,
+  TableKeyType,
 } from './wire-types';
 
 export abstract class TableKey<T> {

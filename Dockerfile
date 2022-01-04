@@ -93,23 +93,20 @@ USER ${USER}
 CMD ["tsc", "-w", "--preserveWatchOutput", "-p", "tsconfig.json"]
 
 
-# FROM base as testwatch
-# 
-# ENV NODE_ENV test
-# 
-# RUN mkdir /app && \
-#     chown ${USER}:${USER} /app
-# 
-# WORKDIR /app
-# 
-# COPY --from=builder_development --chown=${USER}:${USER} \
-#   /app/node_modules.sav node_modules
-# 
-# USER ${USER}
-# 
-# CMD ["nodemon", "--exec", "tap", "src/**/*.test.js"]
-# 
-# 
+FROM base as test_watch
+
+ENV NODE_ENV test
+
+WORKDIR /app
+
+COPY --from=builder_development --chown=${USER}:${USER} \
+  /app/node_modules.sav node_modules
+
+USER ${USER}
+
+CMD ["nodemon", "--delay", "1", "--watch", "/app/dist", "-e", "js", "--exec", "tap --no-check-coverage dist/test/**/*.js"]
+
+
 # FROM base as test
 # 
 # ENV NODE_ENV test
