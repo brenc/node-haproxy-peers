@@ -601,7 +601,7 @@ export class PeerParser extends Transform {
             `Incorrect packet length (value for '${dataType}')`
           );
 
-          if (lengthOfEntry === 1) {
+          if (entryPointer.isEmpty()) {
             const cached = this.dictionaryCache.get(entryId);
             if (cached === undefined) {
               throw new Error(`Unknown dictionary cache entry '${entryId}'`);
