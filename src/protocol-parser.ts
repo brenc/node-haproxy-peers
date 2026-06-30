@@ -506,16 +506,15 @@ export class PeerParser extends Transform {
 
       switch (decodedType) {
         case DecodedType.SINT: {
-          pointer.assert(4, `insufficient data (value for '${dataType}')`);
-          values.set(
-            dataType,
-            new SignedInt32TableValue(buffer.readInt32BE(pointer.get()))
-          );
+          let decodedInt: number;
+          [consumed, decodedInt] = VarInt.decode(pointer.sliceBuffer(buffer));
           pointer.consume(
-            4,
+            consumed,
             `Incorrect packet length (value for '${dataType}')`
           );
+          values.set(dataType, new SignedInt32TableValue(decodedInt));
           break;
+        }
         }
 
         case DecodedType.UINT:
