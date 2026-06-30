@@ -21,7 +21,9 @@ import { inet_ntop } from 'inet_xtoy';
 import { Transform, TransformCallback, TransformOptions } from 'stream';
 import * as messages from './messages';
 import {
+  ArrayTableValue,
   BinaryTableKey,
+  DictionaryTableValue,
   FrequencyCounterTableValue,
   IPv4TableKey,
   IPv6TableKey,
@@ -39,7 +41,10 @@ import {
   ControlMessageClass,
   DataType,
   DecodedType,
+  getArrayElementType,
   getDecodedType,
+  isArrayDataType,
+  isFrequencyCounterDataType,
   MessageClass,
   TableKeyType,
   UpdateMessageType,
@@ -108,6 +113,7 @@ class Pointer {
 
 export class PeerParser extends Transform {
   private buffer: Buffer;
+  private dictionaryCache: Map<number, string>;
   private lastTableDefinition?: TableDefinition;
   private lastUpdateId: number;
 
@@ -115,6 +121,7 @@ export class PeerParser extends Transform {
     options.readableObjectMode = true;
     super(options);
     this.buffer = Buffer.alloc(0);
+    this.dictionaryCache = new Map<number, string>();
     this.lastUpdateId = 0;
   }
 
@@ -246,7 +253,7 @@ export class PeerParser extends Transform {
       nameLength: number,
       keyType: TableKeyType,
       keyLen: number,
-      dataType: DataType,
+      dataTypeBitfield: number,
       expiry: number;
 
     let consumed;
@@ -279,51 +286,87 @@ export class PeerParser extends Transform {
     [consumed, keyLen] = VarInt.decode(pointer.sliceBuffer(buffer));
     pointer.consume(consumed, 'Incorrect packet length (keyLen)');
 
-    [consumed, dataType] = VarInt.decode(pointer.sliceBuffer(buffer));
+    [consumed, dataTypeBitfield] = VarInt.decode(pointer.sliceBuffer(buffer));
     pointer.consume(consumed, 'Incorrect packet length (dataType)');
 
     [consumed, expiry] = VarInt.decode(pointer.sliceBuffer(buffer));
     pointer.consume(consumed, 'Incorrect packet length (expiry)');
 
-    // From here until the end of the message, data alternates between the
-    // frequency counter type and the frequency counter period for each
-    // frequency counter added to the stick table.
-    const counters: [number, number][] = [];
-    let counterType: number | null = null;
-    let counterPeriod: number | null = null;
-    while (!pointer.isEmpty()) {
-      if (counterType === null) {
-        [consumed, counterType] = VarInt.decode(pointer.sliceBuffer(buffer));
-        pointer.consume(consumed, 'Incorrect packet length (counterType)');
-      } else {
-        [consumed, counterPeriod] = VarInt.decode(pointer.sliceBuffer(buffer));
-        pointer.consume(consumed, 'Incorrect packet length (counterPeriod)');
+    const dataTypes: DataType[] = [];
+    for (let i = 0; i < 32; i++) {
+      if ((dataTypeBitfield >> i) & 1) {
+        dataTypes.push(i as DataType);
+      }
+    }
+
+    const dataTypeParameters = new Map<
+      DataType,
+      { count?: number; period?: number }
+    >();
+    const dataTypeDefinitions: {
+      dataType: DataType;
+      count?: number;
+      period?: number;
+    }[] = [];
+
+    for (const dataType of dataTypes) {
+      const decodedType = getDecodedType(dataType);
+
+      if (isArrayDataType(dataType)) {
+        let count: number;
+        [consumed, count] = VarInt.decode(pointer.sliceBuffer(buffer));
+        pointer.consume(consumed, 'Incorrect packet length (count)');
+
+        const definition: {
+          dataType: DataType;
+          count?: number;
+          period?: number;
+        } = {
+          dataType,
+          count,
+        };
+
+        if (dataType === DataType.GPC_RATE_ARRAY) {
+          let period: number;
+          [consumed, period] = VarInt.decode(pointer.sliceBuffer(buffer));
+          pointer.consume(consumed, 'Incorrect packet length (period)');
+          definition.period = period;
+        }
+
+        dataTypeDefinitions.push(definition);
+        dataTypeParameters.set(dataType, {
+          count: definition.count,
+          period: definition.period,
+        });
+        continue;
       }
 
-      if (counterType !== null && counterPeriod !== null) {
-        counters.push([counterType, counterPeriod]);
-        counterType = null;
-        counterPeriod = null;
+      if (isFrequencyCounterDataType(dataType)) {
+        let period: number;
+        [consumed, period] = VarInt.decode(pointer.sliceBuffer(buffer));
+        pointer.consume(consumed, 'Incorrect packet length (period)');
+
+        dataTypeDefinitions.push({ dataType, period });
+        dataTypeParameters.set(dataType, { period });
+        continue;
       }
+
+      if (
+        decodedType !== DecodedType.SINT &&
+        decodedType !== DecodedType.UINT &&
+        decodedType !== DecodedType.ULONGLONG &&
+        decodedType !== DecodedType.DICTIONARY
+      ) {
+        throw new Error(`Unsupported data type '${DataType[dataType]}'`);
+      }
+
+      dataTypeDefinitions.push({ dataType });
+      dataTypeParameters.set(dataType, {});
     }
 
     if (!pointer.isEmpty()) {
       throw new Error('Incorrect packet length (total)');
     }
-
-    // This tests the packed value for every data type possible otherwise if
-    // a new data type is added in the future we can get extra data in the
-    // message that we're not prepared to handle.
-    const dataTypes: number[] = [];
-    for (let i = 0; i < 32; i++) {
-      if ((dataType >> i) & 1) {
-        dataTypes.push(i);
-      }
-    }
-
-    // debug('"%s" "%s" "%s" "%s" "%s" "%s", "%s" "%o" "%o"', senderTableId,
-    //   nameLength, name, keyType, keyLen, dataType, expiry, pointer,
-    //   dataTypes);
 
     const definition = {
       senderTableId,
@@ -331,8 +374,9 @@ export class PeerParser extends Transform {
       keyType,
       keyLen,
       dataTypes,
+      dataTypeParameters,
       expiry,
-      counters,
+      dataTypeDefinitions,
     };
 
     this.lastTableDefinition = definition;
@@ -360,17 +404,10 @@ export class PeerParser extends Transform {
   ): number | null {
     debug('attempting to parse entry update %o', options);
 
-    // The table definition should always be sent before any update message.
     const tableDefinition = this.lastTableDefinition;
     if (tableDefinition === undefined) {
       throw new Error(
         'unable to parse entry update without a stick table definition'
-      );
-    }
-
-    if (options.incremental && this.lastUpdateId === undefined) {
-      throw new Error(
-        'unable to parse incremental entry update without a previous update'
       );
     }
 
@@ -394,165 +431,133 @@ export class PeerParser extends Transform {
       updateId = this.lastUpdateId + 1;
     } else {
       pointer.assert(4, 'insufficient data (updateId)');
-
       updateId = buffer.readUInt32BE(pointer.get());
-
       pointer.consume(4, 'incorrect packet length (updateId)');
     }
 
     if (options.timed) {
       pointer.assert(4, 'insufficient data (expiry)');
-
       expiry = buffer.readUInt32BE(pointer.get());
-
       pointer.consume(4, 'incorrect packet length (expiry)');
     }
 
     switch (tableDefinition.keyType) {
       case TableKeyType.BINARY: {
         const keyLen = tableDefinition.keyLen;
-
         pointer.assert(keyLen, 'insufficient data (key)');
-
-        // HAProxy shows this as hex when you dump the table so that's what
-        // we're doing here.
         key = new BinaryTableKey(
           pointer.sliceBuffer(buffer, keyLen).toString('hex')
         );
-
         pointer.consume(keyLen, 'incorrect packet length (key)');
-
         break;
       }
 
       case TableKeyType.STRING: {
-        // Key length is included in the message for string key types.
         let keyLen;
         [consumed, keyLen] = VarInt.decode(pointer.sliceBuffer(buffer));
-
         pointer.consume(consumed, 'incorrect packet length (keyLen)');
-
         pointer.assert(keyLen, 'insufficient data (key)');
-
         key = new StringTableKey(
           pointer.sliceBuffer(buffer, keyLen).toString()
         );
-
         pointer.consume(keyLen, 'incorrect packet length (key)');
-
         break;
       }
 
       case TableKeyType.SINT: {
         pointer.assert(4, 'insufficient data (key)');
-
         key = new SignedInt32TableKey(buffer.readInt32BE(pointer.get()));
-
         pointer.consume(4, 'incorrect packet length (key)');
-
         break;
       }
 
       case TableKeyType.IPv4: {
         const keyLen = tableDefinition.keyLen;
-
         pointer.assert(keyLen, 'insufficient data (key)');
-
-        // This is stored in "binary network format" so it must be converted
-        // back to a string.
         key = new IPv4TableKey(inet_ntop(pointer.sliceBuffer(buffer, keyLen)));
-
         pointer.consume(keyLen, 'incorrect packet length (key)');
-
         break;
       }
 
       case TableKeyType.IPv6: {
         const keyLen = tableDefinition.keyLen;
-
         pointer.assert(keyLen, 'insufficient data (key)');
-
-        // This is stored in "binary network format" so it must be converted
-        // back to a string.
         key = new IPv6TableKey(inet_ntop(pointer.sliceBuffer(buffer, keyLen)));
-
         pointer.consume(keyLen, 'incorrect packet length (key)');
-
         break;
       }
 
-      default: {
+      default:
         throw new Error(
           `Unable to handle key type '${tableDefinition.keyType as string}'.`
         );
-      }
     }
 
     const values: Map<DataType, TableValue<unknown>> = new Map();
-    for (const dataType of tableDefinition.dataTypes) {
+    for (const dataTypeDefinition of tableDefinition.dataTypeDefinitions) {
+      const dataType = dataTypeDefinition.dataType;
+      const decodedType = getDecodedType(dataType);
       debug(
         'data type is %s (%d) which is a %s',
         DataType[dataType],
         dataType,
-        DecodedType[getDecodedType(dataType)]
+        DecodedType[decodedType]
       );
 
-      let decodedInt;
-      [consumed, decodedInt] = VarInt.decode(pointer.sliceBuffer(buffer));
-      pointer.consume(
-        consumed,
-        `Incorrect packet length (value for '${dataType}')`
-      );
-
-      debug('decoded int:', decodedInt);
-
-      switch (getDecodedType(dataType)) {
+      switch (decodedType) {
         case DecodedType.SINT: {
+          let decodedInt: number;
+          [consumed, decodedInt] = VarInt.decode(pointer.sliceBuffer(buffer));
+          pointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
           values.set(dataType, new SignedInt32TableValue(decodedInt));
           break;
         }
 
-        case DecodedType.UINT: {
-          values.set(dataType, new UnsignedInt32TableValue(decodedInt));
-          break;
-        }
-
+        case DecodedType.UINT:
         case DecodedType.ULONGLONG: {
-          values.set(dataType, new UnsignedInt64TableValue(decodedInt));
+          let decodedInt: number;
+          [consumed, decodedInt] = VarInt.decode(pointer.sliceBuffer(buffer));
+          pointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          values.set(
+            dataType,
+            decodedType === DecodedType.UINT
+              ? new UnsignedInt32TableValue(decodedInt)
+              : new UnsignedInt64TableValue(decodedInt)
+          );
           break;
         }
 
         case DecodedType.FREQUENCY_COUNTER: {
-          // TODO: does this need to be processed in some way?
-          const currentTick = decodedInt;
+          let currentTick: number;
+          [consumed, currentTick] = VarInt.decode(pointer.sliceBuffer(buffer));
+          pointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
 
-          let currentCounter;
+          let currentCounter: number;
           [consumed, currentCounter] = VarInt.decode(
             pointer.sliceBuffer(buffer)
           );
-
           pointer.consume(
             consumed,
             `Incorrect packet length (value for '${dataType}')`
           );
 
-          let previousCounter;
+          let previousCounter: number;
           [consumed, previousCounter] = VarInt.decode(
             pointer.sliceBuffer(buffer)
           );
-
           pointer.consume(
             consumed,
             `Incorrect packet length (value for '${dataType}')`
-          );
-
-          debug(
-            'data type: %s, current tick: %s, current counter: %d, ' +
-              'previous counter: %d',
-            DataType[dataType],
-            currentTick,
-            currentCounter,
-            previousCounter
           );
 
           values.set(
@@ -563,15 +568,160 @@ export class PeerParser extends Transform {
               previousCounter,
             })
           );
-
           break;
         }
 
-        default: {
-          throw new Error(
-            `unable to handle decoded data type ${getDecodedType(dataType)}`
+        case DecodedType.DICTIONARY: {
+          let lengthOfEntry: number;
+          [consumed, lengthOfEntry] = VarInt.decode(
+            pointer.sliceBuffer(buffer)
           );
+          pointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          if (lengthOfEntry === 0) {
+            values.set(dataType, new DictionaryTableValue(null));
+            break;
+          }
+
+          const entryBuffer = pointer.sliceBuffer(
+            buffer,
+            lengthOfEntry,
+            `Insufficient data (value for '${dataType}')`
+          );
+          const entryPointer = new Pointer(lengthOfEntry);
+
+          let entryId: number;
+          [consumed, entryId] = VarInt.decode(entryBuffer);
+          entryPointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          if (entryPointer.isEmpty()) {
+            const cached = this.dictionaryCache.get(entryId);
+            if (cached === undefined) {
+              throw new Error(`Unknown dictionary cache entry '${entryId}'`);
+            }
+            values.set(dataType, new DictionaryTableValue(cached));
+            pointer.consume(
+              lengthOfEntry,
+              `Incorrect packet length (value for '${dataType}')`
+            );
+            break;
+          }
+
+          let stringLength: number;
+          [consumed, stringLength] = VarInt.decode(
+            entryBuffer.slice(entryPointer.get())
+          );
+          entryPointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          const stringOffset = entryPointer.get();
+          entryPointer.assert(
+            stringLength,
+            `Insufficient data (value for '${dataType}')`
+          );
+          const value = entryBuffer
+            .slice(stringOffset, stringOffset + stringLength)
+            .toString();
+          entryPointer.consume(
+            stringLength,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          if (!entryPointer.isEmpty()) {
+            throw new Error(
+              `Incorrect packet length (value for '${dataType}')`
+            );
+          }
+
+          this.dictionaryCache.set(entryId, value);
+          values.set(dataType, new DictionaryTableValue(value));
+          pointer.consume(
+            lengthOfEntry,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+          break;
         }
+
+        case DecodedType.ARRAY: {
+          const count = dataTypeDefinition.count;
+          if (count === undefined) {
+            throw new Error(`Missing array length for '${DataType[dataType]}'`);
+          }
+
+          const elementType = getArrayElementType(dataType);
+          const items: unknown[] = [];
+          for (let i = 0; i < count; i++) {
+            switch (elementType) {
+              case DecodedType.UINT: {
+                let value: number;
+                [consumed, value] = VarInt.decode(pointer.sliceBuffer(buffer));
+                pointer.consume(
+                  consumed,
+                  `Incorrect packet length (value for '${dataType}')`
+                );
+                items.push(value);
+                break;
+              }
+
+              case DecodedType.FREQUENCY_COUNTER: {
+                let currentTick: number;
+                [consumed, currentTick] = VarInt.decode(
+                  pointer.sliceBuffer(buffer)
+                );
+                pointer.consume(
+                  consumed,
+                  `Incorrect packet length (value for '${dataType}')`
+                );
+
+                let currentCounter: number;
+                [consumed, currentCounter] = VarInt.decode(
+                  pointer.sliceBuffer(buffer)
+                );
+                pointer.consume(
+                  consumed,
+                  `Incorrect packet length (value for '${dataType}')`
+                );
+
+                let previousCounter: number;
+                [consumed, previousCounter] = VarInt.decode(
+                  pointer.sliceBuffer(buffer)
+                );
+                pointer.consume(
+                  consumed,
+                  `Incorrect packet length (value for '${dataType}')`
+                );
+
+                items.push({
+                  currentTick,
+                  currentCounter,
+                  previousCounter,
+                });
+                break;
+              }
+
+              default:
+                throw new Error(
+                  `Unable to handle array element type '${DecodedType[elementType]}'`
+                );
+            }
+          }
+
+          values.set(dataType, new ArrayTableValue(items));
+          break;
+        }
+
+        default:
+          throw new Error(
+            `unable to handle decoded data type ${DecodedType[decodedType]}`
+          );
       }
     }
 

@@ -74,6 +74,22 @@ export abstract class TableValue<T> {
   abstract readonly value: T;
 }
 
+export class DictionaryTableValue extends TableValue<string | null> {
+  readonly type = DecodedType.DICTIONARY;
+
+  constructor(public value: string | null) {
+    super();
+  }
+}
+
+export class ArrayTableValue<T> extends TableValue<readonly T[]> {
+  readonly type = DecodedType.ARRAY;
+
+  constructor(public value: readonly T[]) {
+    super();
+  }
+}
+
 export class SignedInt32TableValue extends TableValue<number> {
   readonly type = DecodedType.SINT;
 
@@ -112,6 +128,18 @@ export interface TableDefinition {
   keyType: TableKeyType;
   keyLen: number;
   dataTypes: readonly DataType[];
+  dataTypeDefinitions: readonly {
+    readonly dataType: DataType;
+    readonly count?: number;
+    readonly period?: number;
+  }[];
+  dataTypeParameters: ReadonlyMap<
+    DataType,
+    {
+      readonly count?: number;
+      readonly period?: number;
+    }
+  >;
   expiry: number;
 }
 
