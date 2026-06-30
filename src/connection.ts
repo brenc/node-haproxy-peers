@@ -21,16 +21,16 @@ import Backoff from 'backo2';
 import d from 'debug';
 import { EventEmitter } from 'events';
 import net from 'net';
+import { encodeAck, encodeHello } from './encoder';
 import * as messages from './messages';
 import { Message } from './messages';
 import PeerParser from './protocol-parser';
 import { EntryUpdate, TableDefinition } from './types';
-import * as VarInt from './varint';
 import {
   ControlMessageClass,
+  DEFAULT_PROTOCOL_VERSION,
   MessageClass,
   StatusMessageCode,
-  UpdateMessageType,
 } from './wire-types';
 
 const debug = d('haproxy-peers:connection');
@@ -47,6 +47,7 @@ export interface PeerConnectionOptions {
   myName: string;
   peerName?: string;
   port: number;
+  protocolVersion?: string;
 }
 
 export enum SynchronizationType {
@@ -302,13 +303,15 @@ export class PeerConnection extends EventEmitter {
   }
 
   private sendHello(): void {
-    const helloMessage = `HAProxyS 2.1\n${
-      this.options.peerName || this.options.hostname
-    }\n${this.options.myName} 0 0\n`;
+    const helloMessage = encodeHello({
+      protocolVersion: this.options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION,
+      remotePeerName: this.options.peerName || this.options.hostname,
+      localPeerName: this.options.myName,
+    });
 
     this.socket.write(helloMessage);
 
-    debug('sent hello message "%o"', helloMessage);
+    debug('sent hello message "%o"', helloMessage.toString());
   }
 
   /**
@@ -438,20 +441,9 @@ export class PeerConnection extends EventEmitter {
   private sendAck(tableId: number, updateId: number): void {
     debug('sending ack for update %d in table %d', updateId, tableId);
 
-    const encodedTableId = VarInt.encode(tableId);
-    const encodedUpdateId = Buffer.alloc(4);
-    encodedUpdateId.writeUInt32BE(updateId, 0);
-
-    const ack = Buffer.concat([
-      Buffer.from([MessageClass.UPDATE, UpdateMessageType.ACK]),
-      VarInt.encode(encodedTableId.length + 4),
-      encodedTableId,
-      encodedUpdateId,
-    ]);
-
     this.resetHeartbeatTimer();
 
-    this.socket.write(ack);
+    this.socket.write(encodeAck(tableId, updateId));
   }
 
   private onParserMessage(message: Message) {
