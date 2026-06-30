@@ -87,7 +87,7 @@ function buildUpdate(updateId: number, dictValue: string | null): EntryUpdate {
     [DataType.GPC0, new UnsignedInt32TableValue(11)],
     [DataType.CONN_CNT, new UnsignedInt32TableValue(42)],
     [DataType.CONN_RATE, new FrequencyCounterTableValue(freq(123, 4, 5))],
-    [DataType.BYTES_IN_CNT, new UnsignedInt64TableValue(987654)],
+    [DataType.BYTES_IN_CNT, new UnsignedInt64TableValue(987654n)],
     [DataType.SERVER_KEY, new DictionaryTableValue(dictValue)],
     [DataType.GPT_ARRAY, new ArrayTableValue([1, 2, 3])],
     [
@@ -167,7 +167,7 @@ void test('entry update round-trips through the parser', async (t) => {
           DataType.BYTES_IN_CNT
         ) as UnsignedInt64TableValue
       ).value,
-      987654
+      987654n
     );
     t.same(
       (update.update.values.get(DataType.GPT_ARRAY) as ArrayTableValue<number>)

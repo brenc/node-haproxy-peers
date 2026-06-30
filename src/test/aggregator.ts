@@ -9,6 +9,7 @@ import {
   TableDefinition,
   TableValue,
   UnsignedInt32TableValue,
+  UnsignedInt64TableValue,
 } from '../types';
 import { DataType, FrequencyCounter, TableKeyType } from '../wire-types';
 
@@ -75,6 +76,27 @@ void test('counters are summed across peers', (t) => {
   t.equal(
     (entry.values.get(DataType.CONN_CNT) as UnsignedInt32TableValue).value,
     7
+  );
+  t.end();
+});
+
+void test('64-bit counters are summed across peers', (t) => {
+  const store = new StickTableStore();
+  const def = definition();
+
+  store.applyUpdate(
+    def,
+    update(new Map([[DataType.BYTES_IN_CNT, new UnsignedInt64TableValue(3n)]]))
+  );
+  store.applyUpdate(
+    def,
+    update(new Map([[DataType.BYTES_IN_CNT, new UnsignedInt64TableValue(4n)]]))
+  );
+
+  const [entry] = store.getEntries('t');
+  t.equal(
+    (entry.values.get(DataType.BYTES_IN_CNT) as UnsignedInt64TableValue).value,
+    7n
   );
   t.end();
 });

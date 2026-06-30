@@ -23,6 +23,7 @@ import {
   DictionaryTableValue,
   EntryUpdate,
   FrequencyCounterTableValue,
+  UnsignedInt64TableValue,
   TableDefinition,
   TableKey,
   TableValue,
@@ -133,8 +134,10 @@ function encodeValue(
   switch (decodedType) {
     case DecodedType.SINT:
     case DecodedType.UINT:
-    case DecodedType.ULONGLONG:
       return VarInt.encode(value.value as number);
+
+    case DecodedType.ULONGLONG:
+      return VarInt.encode((value as UnsignedInt64TableValue).value);
 
     case DecodedType.FREQUENCY_COUNTER:
       return encodeFrequencyCounter(

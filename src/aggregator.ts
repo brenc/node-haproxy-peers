@@ -108,10 +108,13 @@ export const defaultMergeStrategy: MergeStrategy = (
       if (!isCounter(dataType)) {
         return incoming;
       }
-      const sum = (existing.value as number) + (incoming.value as number);
-      return decodedType === DecodedType.UINT
-        ? new UnsignedInt32TableValue(sum)
-        : new UnsignedInt64TableValue(sum);
+      if (decodedType === DecodedType.UINT) {
+        const sum = (existing.value as number) + (incoming.value as number);
+        return new UnsignedInt32TableValue(sum);
+      }
+
+      const sum = (existing.value as bigint) + (incoming.value as bigint);
+      return new UnsignedInt64TableValue(sum);
     }
 
     case DecodedType.FREQUENCY_COUNTER:
