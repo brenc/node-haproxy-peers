@@ -41,6 +41,13 @@ import {
 
 const debug = d('haproxy-peers:server');
 
+/**
+ * Upper bound on the plaintext handshake. The hello is three short lines, so a
+ * peer that sends more than this without completing it is treated as hostile
+ * and disconnected rather than letting the buffer grow without bound.
+ */
+const MAX_HANDSHAKE_SIZE = 4096;
+
 export interface PeerServerOptions {
   /** Name this peer announces itself as; must match the HAProxy peer config. */
   localName: string;
@@ -48,6 +55,11 @@ export interface PeerServerOptions {
   protocolVersion?: string;
   /** Optional store that received updates are aggregated into and served from. */
   store?: StickTableStore;
+  /**
+   * Maximum number of simultaneous inbound connections. When set, further
+   * connections are refused until existing ones close. Defaults to unlimited.
+   */
+  maxConnections?: number;
 }
 
 interface ParsedHello {
@@ -147,6 +159,11 @@ export class InboundPeerConnection extends EventEmitter {
     const text = this.handshakeBuffer.toString();
     const newlineCount = text.split('\n').length - 1;
     if (newlineCount < 3) {
+      if (this.handshakeBuffer.length > MAX_HANDSHAKE_SIZE) {
+        debug('rejecting handshake: exceeded %d bytes', MAX_HANDSHAKE_SIZE);
+        this.socket.write(encodeStatus(StatusMessageCode.PROTOCOL_ERROR));
+        this.socket.destroy();
+      }
       return;
     }
 
@@ -314,6 +331,10 @@ export class PeerServer extends EventEmitter {
       const connection = new InboundPeerConnection(socket, this.options);
       this.emit('connection', connection);
     });
+
+    if (this.options.maxConnections !== undefined) {
+      this.server.maxConnections = this.options.maxConnections;
+    }
 
     this.server.on('error', (err) => this.emit('error', err));
     this.server.on('listening', () => this.emit('listening'));
