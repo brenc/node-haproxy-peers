@@ -515,7 +515,6 @@ export class PeerParser extends Transform {
           values.set(dataType, new SignedInt32TableValue(decodedInt));
           break;
         }
-        }
 
         case DecodedType.UINT:
         case DecodedType.ULONGLONG: {
