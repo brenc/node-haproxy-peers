@@ -62,8 +62,14 @@ export enum DataType {
   BYTES_OUT_RATE = 16,
   GPC1 = 17,
   GPC1_RATE = 18,
+  SERVER_KEY = 19,
   HTTP_FAIL_CNT = 20,
   HTTP_FAIL_RATE = 21,
+  GPT_ARRAY = 22,
+  GPC_ARRAY = 23,
+  GPC_RATE_ARRAY = 24,
+  GLITCH_CNT = 25,
+  GLITCH_RATE = 26,
 }
 
 export enum DecodedType {
@@ -75,6 +81,7 @@ export enum DecodedType {
   ULONGLONG,
   FREQUENCY_COUNTER,
   DICTIONARY,
+  ARRAY,
 }
 
 export interface FrequencyCounter {
@@ -112,10 +119,67 @@ export function getDecodedType(dataType: DataType): DecodedType {
     case DataType.HTTP_REQ_RATE:
     case DataType.SESS_RATE:
     case DataType.HTTP_FAIL_RATE:
+    case DataType.GLITCH_RATE:
       return DecodedType.FREQUENCY_COUNTER;
+
+    case DataType.SERVER_KEY:
+      return DecodedType.DICTIONARY;
+
+    case DataType.GPT_ARRAY:
+    case DataType.GPC_ARRAY:
+    case DataType.GPC_RATE_ARRAY:
+      return DecodedType.ARRAY;
+
+    case DataType.GLITCH_CNT:
+      return DecodedType.UINT;
 
     default:
       throw new Error(`Unhandled DataType ${dataType as string}`);
+  }
+}
+
+export function isArrayDataType(dataType: DataType): boolean {
+  switch (dataType) {
+    case DataType.GPT_ARRAY:
+    case DataType.GPC_ARRAY:
+    case DataType.GPC_RATE_ARRAY:
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+export function isFrequencyCounterDataType(dataType: DataType): boolean {
+  switch (dataType) {
+    case DataType.GPC0_RATE:
+    case DataType.GPC1_RATE:
+    case DataType.CONN_RATE:
+    case DataType.SESS_RATE:
+    case DataType.HTTP_REQ_RATE:
+    case DataType.HTTP_ERR_RATE:
+    case DataType.BYTES_IN_RATE:
+    case DataType.BYTES_OUT_RATE:
+    case DataType.HTTP_FAIL_RATE:
+    case DataType.GLITCH_RATE:
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+export function getArrayElementType(dataType: DataType): DecodedType {
+  switch (dataType) {
+    case DataType.GPT_ARRAY:
+    case DataType.GPC_ARRAY:
+      return DecodedType.UINT;
+
+    case DataType.GPC_RATE_ARRAY:
+      return DecodedType.FREQUENCY_COUNTER;
+
+    default:
+      throw new Error(`Unhandled array DataType ${dataType}`);
   }
 }
 
