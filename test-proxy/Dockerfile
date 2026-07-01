@@ -4,6 +4,9 @@ FROM debian:buster-slim
 
 USER root
 
+# Provide the Bun runtime used to install and run nodemon.
+COPY --from=oven/bun:1.3.14 /usr/local/bin/bun /usr/local/bin/bun
+
 ENTRYPOINT ["/usr/bin/env"]
 
 EXPOSE 8100
@@ -20,10 +23,8 @@ RUN set -eux; \
   liblua5.3-0 \
   #lua5.3-dev \
   #make \
-  libpcre2-posix0 \
-  nodejs \
+  libpcre2-posix0 && \
   #procps \
-  yarnpkg && \
   #unzip \
   #wget && \
   rm -rf /var/lib/apt/lists/*
@@ -57,16 +58,14 @@ WORKDIR /app
 
 USER ${USER}
 
-COPY package.json yarn.lock ./
+COPY package.json bun.lock ./
 
 ENV NODE_ENV development
 
-RUN \
-  --mount=type=cache,id=test_proxy_yarn_cache,target=/usr/local/share/.cache \
-  yarnpkg --no-progress
+RUN bun install --frozen-lockfile
 
 RUN useradd -r --shell /bin/bash haproxy
 
 USER ${USER}
 
-CMD ["nodemon", "--watch", "/usr/local/etc/haproxy", "-e", "lua,cfg,pem,http", "--signal", "SIGUSR1", "--exec", "haproxy", "--", "-V", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+CMD ["bunx", "nodemon", "--watch", "/usr/local/etc/haproxy", "-e", "lua,cfg,pem,http", "--signal", "SIGUSR1", "--exec", "haproxy", "--", "-V", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]

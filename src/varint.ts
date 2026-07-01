@@ -27,8 +27,8 @@
  * parsed int.
  */
 export function decode(buffer: Buffer): [number, number] {
-  const [consumed, value] = decodeBigInt(buffer);
-  return [consumed, Number(value)];
+	const [consumed, value] = decodeBigInt(buffer);
+	return [consumed, Number(value)];
 }
 
 /**
@@ -41,29 +41,29 @@ export function decode(buffer: Buffer): [number, number] {
  * parsed int.
  */
 export function decodeBigInt(buffer: Buffer): [number, bigint] {
-  if (buffer.length < 1) {
-    throw new Error('insufficient data');
-  }
+	if (buffer.length < 1) {
+		throw new Error("insufficient data");
+	}
 
-  const first = buffer[0];
-  if ((first & 0b11110000) !== 0b11110000) {
-    return [1, BigInt(first)];
-  }
+	const first = buffer[0];
+	if ((first & 0b11110000) !== 0b11110000) {
+		return [1, BigInt(first)];
+	}
 
-  let val = BigInt(first);
-  let shift = 4n;
-  for (let i = 1; i < buffer.length; i++) {
-    const byte = buffer[i];
-    val += BigInt(byte) << shift;
+	let val = BigInt(first);
+	let shift = 4n;
+	for (let i = 1; i < buffer.length; i++) {
+		const byte = buffer[i];
+		val += BigInt(byte) << shift;
 
-    if ((byte & 0b10000000) === 0) {
-      return [i + 1, val];
-    }
+		if ((byte & 0b10000000) === 0) {
+			return [i + 1, val];
+		}
 
-    shift += 7n;
-  }
+		shift += 7n;
+	}
 
-  throw new Error('insufficient data');
+	throw new Error("insufficient data");
 }
 
 /**
@@ -73,28 +73,28 @@ export function decodeBigInt(buffer: Buffer): [number, bigint] {
  * @returns a Buffer containing the given `int` encoded as an HAProxy VarInt.
  */
 export function encode(int: number | bigint): Buffer {
-  let value = BigInt(int);
-  if (value < 0n) {
-    throw new Error('negative values are not supported');
-  }
+	let value = BigInt(int);
+	if (value < 0n) {
+		throw new Error("negative values are not supported");
+	}
 
-  if (value < 0xf0n) {
-    return Buffer.from([Number(value)]);
-  }
+	if (value < 0xf0n) {
+		return Buffer.from([Number(value)]);
+	}
 
-  const result = [];
-  result.push(Number(value & 0xffn) | 0xf0);
+	const result = [];
+	result.push(Number(value & 0xffn) | 0xf0);
 
-  value -= 0xf0n;
-  value >>= 4n;
+	value -= 0xf0n;
+	value >>= 4n;
 
-  while (value >= 0x80n) {
-    result.push(Number(value & 0x7fn) | 0x80);
-    value -= 0x80n;
-    value >>= 7n;
-  }
+	while (value >= 0x80n) {
+		result.push(Number(value & 0x7fn) | 0x80);
+		value -= 0x80n;
+		value >>= 7n;
+	}
 
-  result.push(Number(value));
+	result.push(Number(value));
 
-  return Buffer.from(result);
+	return Buffer.from(result);
 }

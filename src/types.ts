@@ -18,134 +18,134 @@
  */
 
 import {
-  DataType,
-  DecodedType,
-  FrequencyCounter,
-  TableKeyType,
-} from './wire-types';
+	type DataType,
+	DecodedType,
+	type FrequencyCounter,
+	TableKeyType,
+} from "./wire-types";
 
 export abstract class TableKey<T> {
-  abstract readonly type: TableKeyType;
-  abstract readonly key: T;
+	abstract readonly type: TableKeyType;
+	abstract readonly key: T;
 }
 
 export class SignedInt32TableKey extends TableKey<number> {
-  readonly type = TableKeyType.SINT;
+	readonly type = TableKeyType.SINT;
 
-  constructor(public readonly key: number) {
-    super();
-  }
+	constructor(public readonly key: number) {
+		super();
+	}
 }
 
 export class StringTableKey extends TableKey<string> {
-  readonly type = TableKeyType.STRING;
+	readonly type = TableKeyType.STRING;
 
-  constructor(public readonly key: string) {
-    super();
-  }
+	constructor(public readonly key: string) {
+		super();
+	}
 }
 
 export class BinaryTableKey extends TableKey<string> {
-  readonly type = TableKeyType.BINARY;
+	readonly type = TableKeyType.BINARY;
 
-  constructor(public readonly key: string) {
-    super();
-  }
+	constructor(public readonly key: string) {
+		super();
+	}
 }
 
 export class IPv6TableKey extends TableKey<string> {
-  readonly type = TableKeyType.IPv6;
+	readonly type = TableKeyType.IPv6;
 
-  constructor(public readonly key: string) {
-    super();
-  }
+	constructor(public readonly key: string) {
+		super();
+	}
 }
 
 export class IPv4TableKey extends TableKey<string> {
-  readonly type = TableKeyType.IPv4;
+	readonly type = TableKeyType.IPv4;
 
-  constructor(public readonly key: string) {
-    super();
-  }
+	constructor(public readonly key: string) {
+		super();
+	}
 }
 
 export abstract class TableValue<T> {
-  abstract readonly type: DecodedType;
-  abstract readonly value: T;
+	abstract readonly type: DecodedType;
+	abstract readonly value: T;
 }
 
 export class DictionaryTableValue extends TableValue<string | null> {
-  readonly type = DecodedType.DICTIONARY;
+	readonly type = DecodedType.DICTIONARY;
 
-  constructor(public value: string | null) {
-    super();
-  }
+	constructor(public value: string | null) {
+		super();
+	}
 }
 
 export class ArrayTableValue<T> extends TableValue<readonly T[]> {
-  readonly type = DecodedType.ARRAY;
+	readonly type = DecodedType.ARRAY;
 
-  constructor(public value: readonly T[]) {
-    super();
-  }
+	constructor(public value: readonly T[]) {
+		super();
+	}
 }
 
 export class SignedInt32TableValue extends TableValue<number> {
-  readonly type = DecodedType.SINT;
+	readonly type = DecodedType.SINT;
 
-  constructor(public value: number) {
-    super();
-  }
+	constructor(public value: number) {
+		super();
+	}
 }
 
 export class UnsignedInt32TableValue extends TableValue<number> {
-  readonly type = DecodedType.UINT;
+	readonly type = DecodedType.UINT;
 
-  constructor(public value: number) {
-    super();
-  }
+	constructor(public value: number) {
+		super();
+	}
 }
 
 export class UnsignedInt64TableValue extends TableValue<bigint> {
-  readonly type = DecodedType.ULONGLONG;
+	readonly type = DecodedType.ULONGLONG;
 
-  constructor(public value: bigint) {
-    super();
-  }
+	constructor(public value: bigint) {
+		super();
+	}
 }
 
 export class FrequencyCounterTableValue extends TableValue<FrequencyCounter> {
-  readonly type = DecodedType.FREQUENCY_COUNTER;
+	readonly type = DecodedType.FREQUENCY_COUNTER;
 
-  constructor(public value: FrequencyCounter) {
-    super();
-  }
+	constructor(public value: FrequencyCounter) {
+		super();
+	}
 }
 
 export interface TableDefinition {
-  senderTableId: number;
-  name: string;
-  keyType: TableKeyType;
-  keyLen: number;
-  dataTypes: readonly DataType[];
-  dataTypeDefinitions: readonly {
-    readonly dataType: DataType;
-    readonly count?: number;
-    readonly period?: number;
-  }[];
-  dataTypeParameters: ReadonlyMap<
-    DataType,
-    {
-      readonly count?: number;
-      readonly period?: number;
-    }
-  >;
-  expiry: number;
+	senderTableId: number;
+	name: string;
+	keyType: TableKeyType;
+	keyLen: number;
+	dataTypes: readonly DataType[];
+	dataTypeDefinitions: readonly {
+		readonly dataType: DataType;
+		readonly count?: number;
+		readonly period?: number;
+	}[];
+	dataTypeParameters: ReadonlyMap<
+		DataType,
+		{
+			readonly count?: number;
+			readonly period?: number;
+		}
+	>;
+	expiry: number;
 }
 
 export interface EntryUpdate {
-  updateId: number;
-  expiry: number | null;
-  key: TableKey<unknown>;
-  values: ReadonlyMap<DataType, TableValue<unknown>>;
+	updateId: number;
+	expiry: number | null;
+	key: TableKey<unknown>;
+	values: ReadonlyMap<DataType, TableValue<unknown>>;
 }

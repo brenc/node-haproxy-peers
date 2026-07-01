@@ -14,17 +14,15 @@ services:
       - 8102:8102
       - 8103:8103
     volumes:
-      - /home/${USER}/.cache/yarn:/home/${USER}/.cache/yarn
       - ${PWD}/../haproxy-2.5.0/haproxy:/usr/local/sbin/haproxy
       - ${PWD}/test-proxy/etc:/usr/local/etc/haproxy
       - ${PWD}/test-proxy/package.json:/app/package.json
-      - ${PWD}/test-proxy/yarn.lock:/app/yarn.lock
+      - ${PWD}/test-proxy/bun.lock:/app/bun.lock
 
   demo:
     build:
       args:
         - NODE_ENV
-        - NPM_TOKEN
         - UID
         - USER
       context: .
@@ -35,14 +33,9 @@ services:
     #ports:
     #  - 8200:8200
     volumes:
-      # Use the host's yarn cache otherwise each time you run yarn inside a
-      # fresh container, it'll download all packages to the cache inside the
-      # container. $USER is set by the shell and exported explicitly so it'll
-      # just work here.
-      - /home/${USER}/.cache/yarn:/home/${USER}/.cache/yarn
-      - ${PWD}/dist:/app/dist
+      - ${PWD}/src:/app/src
       - ${PWD}/package.json:/app/package.json
-      - ${PWD}/yarn.lock:/app/yarn.lock
+      - ${PWD}/bun.lock:/app/bun.lock
 
   test_watch:
     build:
