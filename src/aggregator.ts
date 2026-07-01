@@ -175,6 +175,57 @@ function keyToString(key: TableKey<unknown>): string {
   return `${key.type}:${String(key.key)}`;
 }
 
+function emptyFrequencyCounter(): FrequencyCounter {
+  return { currentTick: 0, currentCounter: 0, previousCounter: 0 };
+}
+
+/**
+ * Builds the neutral value for a data type. Used to complete stored entries so
+ * that every entry carries a value for each data type in its table definition
+ * (matching HAProxy, where every configured type is always present) and can be
+ * re-serialized — e.g. when teaching the entry back to another peer.
+ */
+function defaultValue(
+  dataType: DataType,
+  definition: TableDefinition
+): TableValue<unknown> {
+  const decodedType = getDecodedType(dataType);
+
+  switch (decodedType) {
+    case DecodedType.SINT:
+      return new SignedInt32TableValue(0);
+
+    case DecodedType.UINT:
+      return new UnsignedInt32TableValue(0);
+
+    case DecodedType.ULONGLONG:
+      return new UnsignedInt64TableValue(0n);
+
+    case DecodedType.FREQUENCY_COUNTER:
+      return new FrequencyCounterTableValue(emptyFrequencyCounter());
+
+    case DecodedType.DICTIONARY:
+      return new DictionaryTableValue(null);
+
+    case DecodedType.ARRAY: {
+      const count = definition.dataTypeParameters.get(dataType)?.count ?? 0;
+      const elementType = getArrayElementType(dataType);
+      const items: unknown[] = [];
+      for (let i = 0; i < count; i++) {
+        items.push(
+          elementType === DecodedType.FREQUENCY_COUNTER
+            ? emptyFrequencyCounter()
+            : 0
+        );
+      }
+      return new ArrayTableValue(items);
+    }
+
+    default:
+      throw new Error(`no default value for data type '${DataType[dataType]}'`);
+  }
+}
+
 /**
  * In-memory store that aggregates stick table entries received from one or
  * more peers. Definitions are tracked by table name so that entries from
@@ -219,6 +270,15 @@ export class StickTableStore {
         dataType,
         this.merge(dataType, existing?.values.get(dataType), value)
       );
+    }
+
+    // Keep every entry complete so it can be re-serialized (e.g. taught back to
+    // a peer): fill any data type from the definition that has never been seen
+    // with its neutral default. Received values still flow through merge above.
+    for (const { dataType } of definition.dataTypeDefinitions) {
+      if (!values.has(dataType)) {
+        values.set(dataType, defaultValue(dataType, definition));
+      }
     }
 
     table.set(keyString, {

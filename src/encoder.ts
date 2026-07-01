@@ -278,8 +278,12 @@ export function encodeEntryUpdate(
 
   parts.push(encodeKey(update.key, definition.keyLen));
 
-  for (const dataTypeDefinition of definition.dataTypeDefinitions) {
-    const dataType = dataTypeDefinition.dataType;
+  // Values must be written in ascending data type order to match the sorted
+  // bitfield emitted by encodeTableDefinition and the order the parser reads.
+  const dataTypes = definition.dataTypeDefinitions
+    .map((d) => d.dataType)
+    .sort((a, b) => a - b);
+  for (const dataType of dataTypes) {
     const value = update.values.get(dataType);
     if (value === undefined) {
       throw new Error(`missing value for data type '${DataType[dataType]}'`);
