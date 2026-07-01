@@ -17,52 +17,52 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-import d from 'debug';
-import { PeerConnection, SynchronizationType } from './';
-import { DataType } from './wire-types';
+import d from "debug";
+import { PeerConnection, type SynchronizationType } from "./";
+import { DataType } from "./wire-types";
 
-const debug = d('haproxy-peers:demo');
+const debug = d("haproxy-peers:demo");
 
 function connect() {
-  debug('connecting');
+	debug("connecting");
 
-  const conn = new PeerConnection({
-    myName: 'tracker',
-    hostname: 'test-proxy',
-    // peerName: 'test-proxy',
-    port: 8102,
-    // direction: PeerDirection.OUT,
-  });
+	const conn = new PeerConnection({
+		myName: "tracker",
+		hostname: "test-proxy",
+		// peerName: 'test-proxy',
+		port: 8102,
+		// direction: PeerDirection.OUT,
+	});
 
-  conn
-    .on('error', (err) => {
-      console.error('peer connection error: %s', err.stack);
-    })
+	conn
+		.on("error", (err) => {
+			console.error("peer connection error: %s", err.stack);
+		})
 
-    .on('tableDefinition', (def) => {
-      debug(`received table definition "${def.name}":`, def);
-    })
+		.on("tableDefinition", (def) => {
+			debug(`received table definition "${def.name}":`, def);
+		})
 
-    .on('entryUpdate', (update, def) => {
-      debug(
-        `received entry update for table "${def.name}", key '${
-          update.key.key as string
-        }':`,
-        new Map(
-          Array.from(update.values.entries()).map(([k, v]) => {
-            return [DataType[k], v];
-          })
-        )
-      );
-    })
+		.on("entryUpdate", (update, def) => {
+			debug(
+				`received entry update for table "${def.name}", key '${
+					update.key.key as string
+				}':`,
+				new Map(
+					Array.from(update.values.entries()).map(([k, v]) => {
+						return [DataType[k], v];
+					}),
+				),
+			);
+		})
 
-    .on('synchronizationStarted', () => {
-      debug(`synchronization started`);
-    })
+		.on("synchronizationStarted", () => {
+			debug(`synchronization started`);
+		})
 
-    .on('synchronizationFinished', (type: SynchronizationType) => {
-      debug(`Finished sync ${type}`);
-    });
+		.on("synchronizationFinished", (type: SynchronizationType) => {
+			debug(`Finished sync ${type}`);
+		});
 }
 
 connect();

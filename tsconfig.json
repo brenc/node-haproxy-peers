@@ -1,26 +1,23 @@
 {
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "*": ["types/*"]
-    },
-    "module": "commonjs",
-    "esModuleInterop": true,
-    "target": "es2020",
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "outDir": "dist",
-    "strict": true,
-    "sourceMap": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "noUnusedLocals": true
-  },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "src/**/*.spec.ts"
-  ]
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"*": ["types/*"]
+		},
+		"module": "commonjs",
+		"esModuleInterop": true,
+		"target": "es2020",
+		"noImplicitAny": true,
+		"moduleResolution": "node",
+		"outDir": "dist",
+		"strict": true,
+		"sourceMap": true,
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"noUnusedLocals": true,
+		"skipLibCheck": true,
+		"types": ["bun"]
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules"]
 }

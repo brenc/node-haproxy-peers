@@ -16,12 +16,13 @@
  *
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
-import * as types from './types';
+import type * as types from "./types";
 
-export interface Message {} // eslint-disable-line @typescript-eslint/no-empty-interface
+// biome-ignore lint/complexity/noBannedTypes: marker base type shared by all protocol messages
+export type Message = {};
 
 export class TableDefinition implements Message {
-  constructor(public readonly definition: types.TableDefinition) {}
+	constructor(public readonly definition: types.TableDefinition) {}
 }
 
 export class Heartbeat implements Message {}
@@ -35,8 +36,8 @@ export class SynchronizationPartial implements Message {}
 export class SynchronizationFull implements Message {}
 
 export class EntryUpdate implements Message {
-  constructor(
-    public readonly tableDefinition: types.TableDefinition,
-    public readonly update: types.EntryUpdate
-  ) {}
+	constructor(
+		public readonly tableDefinition: types.TableDefinition,
+		public readonly update: types.EntryUpdate,
+	) {}
 }
