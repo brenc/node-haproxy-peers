@@ -516,8 +516,7 @@ export class PeerParser extends Transform {
           break;
         }
 
-        case DecodedType.UINT:
-        case DecodedType.ULONGLONG: {
+        case DecodedType.UINT: {
           let decodedInt: number;
           [consumed, decodedInt] = VarInt.decode(pointer.sliceBuffer(buffer));
           pointer.consume(
@@ -525,12 +524,21 @@ export class PeerParser extends Transform {
             `Incorrect packet length (value for '${dataType}')`
           );
 
-          values.set(
-            dataType,
-            decodedType === DecodedType.UINT
-              ? new UnsignedInt32TableValue(decodedInt)
-              : new UnsignedInt64TableValue(decodedInt)
+          values.set(dataType, new UnsignedInt32TableValue(decodedInt));
+          break;
+        }
+
+        case DecodedType.ULONGLONG: {
+          let decodedInt: bigint;
+          [consumed, decodedInt] = VarInt.decodeBigInt(
+            pointer.sliceBuffer(buffer)
           );
+          pointer.consume(
+            consumed,
+            `Incorrect packet length (value for '${dataType}')`
+          );
+
+          values.set(dataType, new UnsignedInt64TableValue(decodedInt));
           break;
         }
 

@@ -106,10 +106,10 @@ export class UnsignedInt32TableValue extends TableValue<number> {
   }
 }
 
-export class UnsignedInt64TableValue extends TableValue<number> {
+export class UnsignedInt64TableValue extends TableValue<bigint> {
   readonly type = DecodedType.ULONGLONG;
 
-  constructor(public value: number) {
+  constructor(public value: bigint) {
     super();
   }
 }
