@@ -20,6 +20,7 @@
 import d from 'debug';
 import { EventEmitter } from 'events';
 import net from 'net';
+import tls from 'tls';
 import { StickTableStore } from './aggregator';
 import {
   DictionaryEncoder,
@@ -60,6 +61,13 @@ export interface PeerServerOptions {
    * connections are refused until existing ones close. Defaults to unlimited.
    */
   maxConnections?: number;
+  /**
+   * When provided, the server terminates TLS instead of accepting plaintext
+   * connections. Pass a server `key`/`cert` here; for mutual TLS also set
+   * `requestCert: true`, `rejectUnauthorized: true`, and the trusted `ca` so
+   * Node refuses unauthorized clients before the peer handshake begins.
+   */
+  tls?: tls.TlsOptions;
 }
 
 interface ParsedHello {
@@ -327,10 +335,15 @@ export class PeerServer extends EventEmitter {
   constructor(private readonly options: PeerServerOptions) {
     super();
 
-    this.server = net.createServer((socket) => {
+    const onConnection = (socket: net.Socket): void => {
       const connection = new InboundPeerConnection(socket, this.options);
       this.emit('connection', connection);
-    });
+    };
+
+    this.server =
+      this.options.tls !== undefined
+        ? tls.createServer(this.options.tls, onConnection)
+        : net.createServer(onConnection);
 
     if (this.options.maxConnections !== undefined) {
       this.server.maxConnections = this.options.maxConnections;
